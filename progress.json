@@ -14,9 +14,9 @@
     },
     "7x4": {
       "level": 0,
-      "lastSeen": "2026-07-05T09:40:14.370Z",
+      "lastSeen": "2026-07-05T12:18:02.713Z",
       "correct": 0,
-      "wrong": 2
+      "wrong": 3
     },
     "2x3": {
       "level": 1,
@@ -37,26 +37,62 @@
       "wrong": 0
     },
     "6x7": {
-      "level": 0,
-      "lastSeen": "2026-07-05T09:39:39.402Z",
-      "correct": 0,
+      "level": 1,
+      "lastSeen": "2026-07-05T12:20:08.778Z",
+      "correct": 1,
       "wrong": 1
     },
     "4/2": {
-      "level": 0,
-      "lastSeen": "2026-07-05T09:39:47.893Z",
-      "correct": 0,
+      "level": 1,
+      "lastSeen": "2026-07-05T12:20:28.172Z",
+      "correct": 1,
       "wrong": 1
     },
     "6/3": {
       "level": 0,
-      "lastSeen": "2026-07-05T09:39:58.303Z",
+      "lastSeen": "2026-07-05T12:19:34.419Z",
       "correct": 0,
-      "wrong": 1
+      "wrong": 2
     },
     "2x2": {
       "level": 1,
       "lastSeen": "2026-07-05T09:40:01.829Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "24/3": {
+      "level": 1,
+      "lastSeen": "2026-07-05T12:20:39.254Z",
+      "correct": 1,
+      "wrong": 1
+    },
+    "4x4": {
+      "level": 1,
+      "lastSeen": "2026-07-05T12:17:27.856Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "21/3": {
+      "level": 1,
+      "lastSeen": "2026-07-05T12:17:39.322Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "2x6": {
+      "level": 1,
+      "lastSeen": "2026-07-05T12:18:10.350Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "10/5": {
+      "level": 1,
+      "lastSeen": "2026-07-05T12:19:40.715Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "12/6": {
+      "level": 1,
+      "lastSeen": "2026-07-05T12:19:45.157Z",
       "correct": 1,
       "wrong": 0
     }
@@ -64,12 +100,12 @@
   "days": [
     {
       "date": "2026-07-05",
-      "sessions": 1,
-      "stars": 1,
+      "sessions": 2,
+      "stars": 3,
       "card": null
     }
   ],
   "streak": 0,
   "cards": [],
-  "totalStars": 1
+  "totalStars": 3
 }
