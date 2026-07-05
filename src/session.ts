@@ -17,6 +17,8 @@ export interface SessionResult {
 }
 
 const REPLY_TIMEOUT_MS = 4 * 60 * 1000;
+// первый ответ ждём весь час окна (реальный предел задаёт deadline в TelegramIO)
+const FIRST_REPLY_TIMEOUT_MS = 60 * 60 * 1000;
 const MIN_TO_STOP = 5;
 
 type Answer =
@@ -35,7 +37,8 @@ export async function runSession(
 ): Promise<SessionResult> {
   await io.send(
     pick(GREETINGS, rng) +
-      `\n\nЗадание: ${facts.length} примеров. После ${MIN_TO_STOP} можно написать «стоп». Поехали! 🚀`,
+      `\n\nЗадание: ${facts.length} примеров. После ${MIN_TO_STOP} можно написать «стоп».\n` +
+      `⏰ Я на связи ближайший час — начинай, когда будешь готова. Поехали! 🚀`,
   );
 
   const queue = [...facts];
@@ -47,7 +50,7 @@ export async function runSession(
   while (queue.length > 0) {
     const f = queue.shift()!;
     await io.send(`✏️ ${f.question}`);
-    const a = await ask(io, progress, f, rng);
+    const a = await ask(io, progress, f, rng, answered === 0 ? FIRST_REPLY_TIMEOUT_MS : REPLY_TIMEOUT_MS);
 
     if (a.kind === "timeout") {
       if (answered === 0) return { answered, correct, finished: false };
@@ -87,10 +90,16 @@ export async function runSession(
   return { answered, correct, finished: true };
 }
 
-async function ask(io: SessionIO, progress: Progress, f: Fact, rng: () => number): Promise<Answer> {
+async function ask(
+  io: SessionIO,
+  progress: Progress,
+  f: Fact,
+  rng: () => number,
+  timeoutMs: number,
+): Promise<Answer> {
   let attempt = 1;
   for (;;) {
-    const reply = await io.waitForReply(REPLY_TIMEOUT_MS);
+    const reply = await io.waitForReply(timeoutMs);
     if (reply === null) return { kind: "timeout" };
     const text = reply.trim().toLowerCase();
     if (text === "стоп" || text === "stop") return { kind: "stop" };

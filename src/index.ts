@@ -33,7 +33,7 @@ const NEXT_TIME: Record<Slot, string> = {
 
 const PROGRESS_PATH = "progress.json";
 const QUESTIONS = 10;
-const WINDOW_MINUTES = 25;
+const WINDOW_MINUTES = 60;
 
 async function announceCard(tg: Telegram, chatId: number, card: Card, title: string): Promise<void> {
   const caption = `${title}\n${card.emoji} ${card.name}\nРедкость: ${rarityLabel(card.rarity)}`;

@@ -9,16 +9,18 @@ function fact(key: string, q: string, answer: number): Fact {
 
 function mockIO(replies: string[]) {
   const sent: string[] = [];
+  const timeouts: number[] = [];
   let i = 0;
   const io: SessionIO = {
     async send(text) {
       sent.push(text);
     },
-    async waitForReply() {
+    async waitForReply(timeoutMs) {
+      timeouts.push(timeoutMs);
       return i < replies.length ? replies[i++] : null;
     },
   };
-  return { io, sent };
+  return { io, sent, timeouts };
 }
 
 const FACTS = [fact("2x3", "2 × 3 = ?", 6), fact("3x3", "3 × 3 = ?", 9)];
@@ -77,4 +79,19 @@ test("timeout before any answer -> finished:false", async () => {
   const { io } = mockIO([]);
   const r = await runSession(io, p, FACTS, () => new Date(), rng);
   expect(r).toEqual({ answered: 0, correct: 0, finished: false });
+});
+
+test("first answer is awaited for the whole hour, later ones for 4 minutes", async () => {
+  const p = emptyProgress();
+  const { io, timeouts } = mockIO(["6", "9"]);
+  await runSession(io, p, FACTS, () => new Date(), rng);
+  expect(timeouts[0]).toBe(60 * 60 * 1000);
+  expect(timeouts[1]).toBe(4 * 60 * 1000);
+});
+
+test("greeting tells how long the bot waits", async () => {
+  const p = emptyProgress();
+  const { io, sent } = mockIO(["6", "9"]);
+  await runSession(io, p, FACTS, () => new Date(), rng);
+  expect(sent[0]).toContain("час");
 });
