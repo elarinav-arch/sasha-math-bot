@@ -1,0 +1,44 @@
+name: training
+
+on:
+  schedule:
+    # 10:00, 14:00, 17:00 по Кипру (UTC+3 летом)
+    - cron: "0 7,11,14 * * *"
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "morning | midday | evening"
+        required: false
+
+concurrency: training
+
+permissions:
+  contents: write
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm start
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHILD_CHAT_ID: ${{ secrets.CHILD_CHAT_ID }}
+          PARENT_CHAT_ID: ${{ secrets.PARENT_CHAT_ID }}
+          SESSION_SLOT: ${{ github.event.inputs.slot }}
+      - name: Commit progress
+        run: |
+          git config user.name "robo-pets-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add progress.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: progress $(date -u +%FT%H:%M)"
+            git pull --rebase
+            git push
+          fi
