@@ -297,10 +297,11 @@
       "card": "c23"
     }
   ],
-  "streak": 2,
+  "streak": 3,
   "cards": [
     "c05",
-    "c23"
+    "c23",
+    "s03"
   ],
   "totalStars": 12
 }
