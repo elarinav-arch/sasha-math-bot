@@ -10,10 +10,12 @@ import { Telegram, TelegramIO } from "./telegram.js";
 
 export type Slot = "morning" | "midday" | "evening";
 
+// Резервная эвристика на случай, если SESSION_SLOT не передан явно
+// (в проде воркфлоу всегда передаёт слот по сработавшему cron — см. train.yml).
 export function slotForHourUtc(h: number): Slot {
-  if (h < 9) return "morning"; // cron 07:00 UTC = 10:00 Кипр
-  if (h < 13) return "midday"; // cron 11:00 UTC = 14:00 Кипр
-  return "evening"; // cron 14:00 UTC = 17:00 Кипр
+  if (h < 13) return "morning"; // cron 11:00 UTC = 14:00 Кипр
+  if (h < 15) return "midday"; // cron 14:00 UTC = 17:00 Кипр
+  return "evening"; // cron 16:00 UTC = 19:00 Кипр — тут подводим итоги дня
 }
 
 export function localDate(d: Date = new Date()): string {
@@ -26,9 +28,9 @@ export function localDate(d: Date = new Date()): string {
 }
 
 const NEXT_TIME: Record<Slot, string> = {
-  morning: "сегодня в 14:00",
-  midday: "сегодня в 17:00",
-  evening: "завтра в 10:00",
+  morning: "сегодня в 17:00",
+  midday: "сегодня в 19:00",
+  evening: "завтра в 14:00",
 };
 
 const PROGRESS_PATH = "progress.json";

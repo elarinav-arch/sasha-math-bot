@@ -2,9 +2,9 @@ import { expect, test } from "vitest";
 import { slotForHourUtc, localDate } from "../src/index.js";
 
 test("slot detection by UTC hour", () => {
-  expect(slotForHourUtc(7)).toBe("morning");
-  expect(slotForHourUtc(11)).toBe("midday");
-  expect(slotForHourUtc(14)).toBe("evening");
+  expect(slotForHourUtc(11)).toBe("morning"); // 14:00 Кипр — первая тренировка
+  expect(slotForHourUtc(14)).toBe("midday"); // 17:00 Кипр — вторая
+  expect(slotForHourUtc(16)).toBe("evening"); // 19:00 Кипр — последняя, финал дня
   expect(slotForHourUtc(20)).toBe("evening");
 });
 
