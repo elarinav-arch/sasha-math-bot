@@ -143,6 +143,66 @@
       "lastSeen": "2026-07-05T15:20:57.602Z",
       "correct": 1,
       "wrong": 0
+    },
+    "3x4": {
+      "level": 1,
+      "lastSeen": "2026-07-06T11:45:05.346Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "3x3": {
+      "level": 1,
+      "lastSeen": "2026-07-06T11:45:10.843Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "6/2": {
+      "level": 1,
+      "lastSeen": "2026-07-06T11:45:15.329Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "28/7": {
+      "level": 0,
+      "lastSeen": "2026-07-06T11:45:34.131Z",
+      "correct": 0,
+      "wrong": 1
+    },
+    "3x2": {
+      "level": 1,
+      "lastSeen": "2026-07-06T11:45:39.219Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "9/3": {
+      "level": 1,
+      "lastSeen": "2026-07-06T11:45:52.297Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "12/4": {
+      "level": 0,
+      "lastSeen": "2026-07-06T11:47:00.730Z",
+      "correct": 0,
+      "wrong": 1
+    },
+    "18/9": {
+      "level": 1,
+      "lastSeen": "2026-07-06T11:47:06.958Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "45/9": {
+      "level": 1,
+      "lastSeen": "2026-07-06T11:47:16.373Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "8x8": {
+      "level": 0,
+      "lastSeen": "2026-07-06T11:47:47.874Z",
+      "correct": 0,
+      "wrong": 1
     }
   },
   "days": [
@@ -151,11 +211,17 @@
       "sessions": 3,
       "stars": 6,
       "card": "c05"
+    },
+    {
+      "date": "2026-07-06",
+      "sessions": 1,
+      "stars": 2,
+      "card": null
     }
   ],
   "streak": 1,
   "cards": [
     "c05"
   ],
-  "totalStars": 6
+  "totalStars": 8
 }
