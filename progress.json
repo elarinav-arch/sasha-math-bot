@@ -217,9 +217,9 @@
       "wrong": 0
     },
     "18/6": {
-      "level": 0,
-      "lastSeen": "2026-07-06T17:24:35.756Z",
-      "correct": 0,
+      "level": 1,
+      "lastSeen": "2026-07-07T14:12:22.091Z",
+      "correct": 1,
       "wrong": 2
     },
     "3x5": {
@@ -281,6 +281,24 @@
       "lastSeen": "2026-07-06T17:25:16.649Z",
       "correct": 1,
       "wrong": 0
+    },
+    "3x9": {
+      "level": 0,
+      "lastSeen": "2026-07-07T14:12:11.143Z",
+      "correct": 0,
+      "wrong": 1
+    },
+    "12/3": {
+      "level": 1,
+      "lastSeen": "2026-07-07T14:12:28.641Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "4x2": {
+      "level": 1,
+      "lastSeen": "2026-07-07T14:12:38.377Z",
+      "correct": 1,
+      "wrong": 0
     }
   },
   "days": [
@@ -295,6 +313,12 @@
       "sessions": 3,
       "stars": 6,
       "card": "c23"
+    },
+    {
+      "date": "2026-07-07",
+      "sessions": 1,
+      "stars": 2,
+      "card": null
     }
   ],
   "streak": 3,
@@ -303,5 +327,5 @@
     "c23",
     "s03"
   ],
-  "totalStars": 12
+  "totalStars": 14
 }
