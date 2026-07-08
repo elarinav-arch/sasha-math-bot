@@ -12,6 +12,7 @@ export interface DayRecord {
   sessions: number;
   stars: number;
   card: string | null; // id карточки, выданной за этот день
+  attemptedSlots?: string[]; // какие слоты дня уже запускались (дедуп частых тиков cron)
 }
 
 export interface Progress {
@@ -42,4 +43,13 @@ export function getDay(p: Progress, date: string): DayRecord {
     p.days.push(day);
   }
   return day;
+}
+
+export function hasAttemptedSlot(day: DayRecord, slot: string): boolean {
+  return (day.attemptedSlots ?? []).includes(slot);
+}
+
+export function markSlotAttempted(day: DayRecord, slot: string): void {
+  const existing = day.attemptedSlots ?? [];
+  day.attemptedSlots = existing.includes(slot) ? existing : [...existing, slot];
 }

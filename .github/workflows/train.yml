@@ -1,14 +1,17 @@
 name: training
 
 on:
+  # GitHub Actions cron — best-effort и может пропускать тики (особенно у нечасто
+  # используемых публичных репозиториев). Поэтому опрашиваем часто: бот сам решает
+  # по кипрскому времени, открыто ли сейчас окно тренировки, и не запускал ли он
+  # его уже сегодня. Если один тик пропущен — сработает следующий через 10 минут,
+  # всё ещё внутри часового окна.
   schedule:
-    - cron: "0 11 * * *" # 14:00 Кипр (UTC+3 летом) — первая тренировка
-    - cron: "0 14 * * *" # 17:00 Кипр — вторая
-    - cron: "0 16 * * *" # 19:00 Кипр — последняя, тут подводим итоги дня
+    - cron: "*/10 10-17 * * *" # 13:00–20:50 Кипр (UTC+3 летом), с запасом вокруг окон 14:00/17:00/19:00
   workflow_dispatch:
     inputs:
       slot:
-        description: "morning | midday | evening"
+        description: "morning | midday | evening (принудительный запуск, игнорирует окно и дедуп)"
         required: false
 
 concurrency: training
@@ -27,24 +30,12 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Determine slot
-        id: slot
-        run: |
-          if [ -n "${{ github.event.inputs.slot }}" ]; then
-            echo "value=${{ github.event.inputs.slot }}" >> "$GITHUB_OUTPUT"
-          else
-            case "${{ github.event.schedule }}" in
-              "0 11 * * *") echo "value=morning" >> "$GITHUB_OUTPUT" ;;
-              "0 14 * * *") echo "value=midday" >> "$GITHUB_OUTPUT" ;;
-              "0 16 * * *") echo "value=evening" >> "$GITHUB_OUTPUT" ;;
-            esac
-          fi
       - run: npm start
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHILD_CHAT_ID: ${{ secrets.CHILD_CHAT_ID }}
           PARENT_CHAT_ID: ${{ secrets.PARENT_CHAT_ID }}
-          SESSION_SLOT: ${{ steps.slot.outputs.value }}
+          SESSION_SLOT: ${{ github.event.inputs.slot }}
       - name: Commit progress
         run: |
           git config user.name "robo-pets-bot"

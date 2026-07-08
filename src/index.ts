@@ -5,17 +5,43 @@ import { parentReport } from "./report.js";
 import { dayGoalMet, finishDay, recordSession, starsForSession } from "./rewards.js";
 import { rarityLabel, type Card } from "./cards.js";
 import { runSession } from "./session.js";
-import { getDay, loadProgress, saveProgress } from "./state.js";
+import { getDay, hasAttemptedSlot, loadProgress, markSlotAttempted, saveProgress } from "./state.js";
 import { Telegram, TelegramIO } from "./telegram.js";
 
 export type Slot = "morning" | "midday" | "evening";
 
-// Резервная эвристика на случай, если SESSION_SLOT не передан явно
-// (в проде воркфлоу всегда передаёт слот по сработавшему cron — см. train.yml).
-export function slotForHourUtc(h: number): Slot {
-  if (h < 13) return "morning"; // cron 11:00 UTC = 14:00 Кипр
-  if (h < 15) return "midday"; // cron 14:00 UTC = 17:00 Кипр
-  return "evening"; // cron 16:00 UTC = 19:00 Кипр — тут подводим итоги дня
+interface SlotSchedule {
+  slot: Slot;
+  hour: number; // час по кипрскому времени, когда открывается окно
+  minute: number;
+}
+
+// Кипрское время начала каждого окна тренировки.
+const SLOT_SCHEDULE: SlotSchedule[] = [
+  { slot: "morning", hour: 14, minute: 0 },
+  { slot: "midday", hour: 17, minute: 0 },
+  { slot: "evening", hour: 19, minute: 0 }, // последнее окно — тут подводим итоги дня
+];
+
+// GitHub Actions cron — best-effort и иногда пропускает тики (особенно у нечасто
+// используемых публичных репозиториев), поэтому вместо жёсткой привязки к одному
+// срабатыванию воркфлоу опрашивается часто, а бот сам решает по кипрскому времени,
+// открыто ли сейчас окно одной из тренировок. Если тик пропущен — сработает следующий.
+export function activeSlot(now: Date, windowMinutes: number): Slot | null {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Nicosia",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const hour = Number(parts.find((p) => p.type === "hour")!.value);
+  const minute = Number(parts.find((p) => p.type === "minute")!.value);
+  const nowMinutes = hour * 60 + minute;
+  for (const s of SLOT_SCHEDULE) {
+    const start = s.hour * 60 + s.minute;
+    if (nowMinutes >= start && nowMinutes < start + windowMinutes) return s.slot;
+  }
+  return null;
 }
 
 export function localDate(d: Date = new Date()): string {
@@ -50,11 +76,25 @@ async function main(): Promise<void> {
   const parentChatId = process.env.PARENT_CHAT_ID ? Number(process.env.PARENT_CHAT_ID) : null;
   if (!token || !chatId) throw new Error("TELEGRAM_BOT_TOKEN and CHILD_CHAT_ID are required");
 
+  // Явный SESSION_SLOT (ручной запуск через workflow_dispatch) форсирует слот,
+  // даже вне окна и даже если этот слот сегодня уже отмечен как проведённый.
   const slotEnv = process.env.SESSION_SLOT as Slot | undefined;
-  const slot: Slot = slotEnv || slotForHourUtc(new Date().getUTCHours());
-  const date = localDate();
+  const forced = Boolean(slotEnv);
+  const slot: Slot | null = slotEnv || activeSlot(new Date(), WINDOW_MINUTES);
+  if (!slot) {
+    console.log("Сейчас не окно тренировки — выхожу без действий.");
+    return;
+  }
 
+  const date = localDate();
   const progress = loadProgress(PROGRESS_PATH);
+  const day = getDay(progress, date);
+  if (!forced && hasAttemptedSlot(day, slot)) {
+    console.log(`Слот ${slot} за ${date} уже был запущен сегодня — пропускаю повтор.`);
+    return;
+  }
+  markSlotAttempted(day, slot);
+
   const facts = pickSessionFacts(progress, allFacts(), QUESTIONS, new Date());
 
   const tg = new Telegram(token);
@@ -82,7 +122,6 @@ async function main(): Promise<void> {
     const { card, streakCard } = finishDay(progress, date);
     if (card) await announceCard(tg, chatId, card, "🎉 Дневная цель выполнена! Новая карточка:");
     if (streakCard) await announceCard(tg, chatId, streakCard, `🔥 Серия ${progress.streak} дней! Особая награда:`);
-    const day = getDay(progress, date);
     if (!dayGoalMet(day) && day.sessions > 0) {
       await tg.sendMessage(chatId, `Сегодня ${day.stars} ⭐ — чуть-чуть не хватило до карточки. Завтра получится! 💪`);
     }
