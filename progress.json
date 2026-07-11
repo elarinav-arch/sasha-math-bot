@@ -25,9 +25,9 @@
       "wrong": 0
     },
     "2x5": {
-      "level": 2,
-      "lastSeen": "2026-07-06T17:25:41.191Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-07-11T16:36:08.054Z",
+      "correct": 3,
       "wrong": 0
     },
     "63/9": {
@@ -427,9 +427,9 @@
       "wrong": 0
     },
     "6x4": {
-      "level": 1,
-      "lastSeen": "2026-07-08T16:34:53.867Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-11T16:36:15.200Z",
+      "correct": 2,
       "wrong": 0
     },
     "5x2": {
@@ -545,6 +545,54 @@
       "lastSeen": "2026-07-11T14:54:27.020Z",
       "correct": 1,
       "wrong": 1
+    },
+    "54/9": {
+      "level": 1,
+      "lastSeen": "2026-07-11T16:34:21.922Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "48/8": {
+      "level": 1,
+      "lastSeen": "2026-07-11T16:34:39.159Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "48/6": {
+      "level": 1,
+      "lastSeen": "2026-07-11T16:37:03.813Z",
+      "correct": 1,
+      "wrong": 1
+    },
+    "36/6": {
+      "level": 1,
+      "lastSeen": "2026-07-11T16:35:37.442Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "14/2": {
+      "level": 1,
+      "lastSeen": "2026-07-11T16:35:45.674Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "7x5": {
+      "level": 1,
+      "lastSeen": "2026-07-11T16:36:03.449Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "6x9": {
+      "level": 1,
+      "lastSeen": "2026-07-11T16:36:29.963Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "6x8": {
+      "level": 1,
+      "lastSeen": "2026-07-11T16:36:38.878Z",
+      "correct": 1,
+      "wrong": 0
     }
   },
   "days": [
@@ -578,21 +626,23 @@
     },
     {
       "date": "2026-07-11",
-      "sessions": 2,
-      "stars": 6,
-      "card": null,
+      "sessions": 3,
+      "stars": 9,
+      "card": "c15",
       "attemptedSlots": [
         "morning",
-        "midday"
+        "midday",
+        "evening"
       ]
     }
   ],
-  "streak": 1,
+  "streak": 2,
   "cards": [
     "c05",
     "c23",
     "s03",
-    "c16"
+    "c16",
+    "c15"
   ],
-  "totalStars": 29
+  "totalStars": 32
 }
