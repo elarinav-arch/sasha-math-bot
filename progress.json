@@ -7,9 +7,9 @@
       "wrong": 0
     },
     "2x4": {
-      "level": 1,
-      "lastSeen": "2026-07-05T09:38:58.007Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-11T11:17:39.758Z",
+      "correct": 2,
       "wrong": 0
     },
     "7x4": {
@@ -139,9 +139,9 @@
       "wrong": 0
     },
     "2x8": {
-      "level": 1,
-      "lastSeen": "2026-07-05T15:20:57.602Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-11T11:18:02.685Z",
+      "correct": 2,
       "wrong": 0
     },
     "3x4": {
@@ -223,9 +223,9 @@
       "wrong": 2
     },
     "3x5": {
-      "level": 1,
-      "lastSeen": "2026-07-06T14:40:09.039Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-11T11:18:43.493Z",
+      "correct": 2,
       "wrong": 0
     },
     "8x6": {
@@ -449,6 +449,48 @@
       "lastSeen": "2026-07-08T16:35:10.823Z",
       "correct": 1,
       "wrong": 0
+    },
+    "5x9": {
+      "level": 1,
+      "lastSeen": "2026-07-11T11:17:24.745Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "5x7": {
+      "level": 1,
+      "lastSeen": "2026-07-11T11:17:34.722Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "6x2": {
+      "level": 1,
+      "lastSeen": "2026-07-11T11:17:48.267Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "35/7": {
+      "level": 1,
+      "lastSeen": "2026-07-11T11:17:55.759Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "40/8": {
+      "level": 0,
+      "lastSeen": "2026-07-11T11:18:19.841Z",
+      "correct": 0,
+      "wrong": 1
+    },
+    "12/2": {
+      "level": 1,
+      "lastSeen": "2026-07-11T11:18:28.664Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "5x6": {
+      "level": 1,
+      "lastSeen": "2026-07-11T11:18:38.647Z",
+      "correct": 1,
+      "wrong": 0
     }
   },
   "days": [
@@ -479,6 +521,15 @@
         "midday",
         "evening"
       ]
+    },
+    {
+      "date": "2026-07-11",
+      "sessions": 1,
+      "stars": 3,
+      "card": null,
+      "attemptedSlots": [
+        "morning"
+      ]
     }
   ],
   "streak": 1,
@@ -488,5 +539,5 @@
     "s03",
     "c16"
   ],
-  "totalStars": 23
+  "totalStars": 26
 }
