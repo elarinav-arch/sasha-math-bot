@@ -355,9 +355,9 @@
       "wrong": 0
     },
     "24/6": {
-      "level": 1,
-      "lastSeen": "2026-07-08T14:44:40.368Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-12T11:35:45.935Z",
+      "correct": 2,
       "wrong": 0
     },
     "4x7": {
@@ -379,9 +379,9 @@
       "wrong": 0
     },
     "4x9": {
-      "level": 1,
-      "lastSeen": "2026-07-08T14:45:43.548Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-12T11:33:20.826Z",
+      "correct": 2,
       "wrong": 0
     },
     "56/8": {
@@ -593,6 +593,54 @@
       "lastSeen": "2026-07-11T16:36:38.878Z",
       "correct": 1,
       "wrong": 0
+    },
+    "8x3": {
+      "level": 1,
+      "lastSeen": "2026-07-12T11:36:03.995Z",
+      "correct": 1,
+      "wrong": 1
+    },
+    "7x9": {
+      "level": 1,
+      "lastSeen": "2026-07-12T11:31:46.873Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "7x8": {
+      "level": 1,
+      "lastSeen": "2026-07-12T11:31:54.745Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "42/6": {
+      "level": 1,
+      "lastSeen": "2026-07-12T11:36:18.116Z",
+      "correct": 1,
+      "wrong": 1
+    },
+    "35/5": {
+      "level": 1,
+      "lastSeen": "2026-07-12T11:33:12.617Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "49/7": {
+      "level": 1,
+      "lastSeen": "2026-07-12T11:34:40.134Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "7x6": {
+      "level": 1,
+      "lastSeen": "2026-07-12T11:35:22.204Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "7x7": {
+      "level": 1,
+      "lastSeen": "2026-07-12T11:35:36.952Z",
+      "correct": 1,
+      "wrong": 0
     }
   },
   "days": [
@@ -634,6 +682,15 @@
         "midday",
         "evening"
       ]
+    },
+    {
+      "date": "2026-07-12",
+      "sessions": 1,
+      "stars": 2,
+      "card": null,
+      "attemptedSlots": [
+        "morning"
+      ]
     }
   ],
   "streak": 2,
@@ -644,5 +701,5 @@
     "c16",
     "c15"
   ],
-  "totalStars": 32
+  "totalStars": 34
 }
