@@ -10,24 +10,25 @@ import { Telegram, TelegramIO } from "./telegram.js";
 
 export type Slot = "morning" | "midday" | "evening";
 
-interface SlotSchedule {
+interface SlotWindow {
   slot: Slot;
-  hour: number; // час по кипрскому времени, когда открывается окно
-  minute: number;
+  startMinutes: number; // от полуночи по кипрскому времени, включительно
+  endMinutes: number; // исключительно
 }
 
-// Кипрское время начала каждого окна тренировки.
-const SLOT_SCHEDULE: SlotSchedule[] = [
-  { slot: "morning", hour: 14, minute: 0 },
-  { slot: "midday", hour: 17, minute: 0 },
-  { slot: "evening", hour: 19, minute: 0 }, // последнее окно — тут подводим итоги дня
+// Окна сплошные, без промежутков между ними: 14:00–17:00 / 17:00–19:00 / 19:00–22:00
+// Кипр. GitHub Actions cron — best-effort и на практике срабатывает не по заданной
+// частоте, а редко и нерегулярно (иногда раз в 1–3 часа, в произвольную минуту).
+// Если бы между окнами были промежутки, редкое срабатывание могло попасть точно
+// в промежуток и слот целиком пропадал бы (это и происходило). Сплошные окна
+// гарантируют: любое срабатывание в течение дня попадёт хоть в какое-то окно.
+const SLOT_SCHEDULE: SlotWindow[] = [
+  { slot: "morning", startMinutes: 14 * 60, endMinutes: 17 * 60 },
+  { slot: "midday", startMinutes: 17 * 60, endMinutes: 19 * 60 },
+  { slot: "evening", startMinutes: 19 * 60, endMinutes: 22 * 60 }, // последнее — тут подводим итоги дня
 ];
 
-// GitHub Actions cron — best-effort и иногда пропускает тики (особенно у нечасто
-// используемых публичных репозиториев), поэтому вместо жёсткой привязки к одному
-// срабатыванию воркфлоу опрашивается часто, а бот сам решает по кипрскому времени,
-// открыто ли сейчас окно одной из тренировок. Если тик пропущен — сработает следующий.
-export function activeSlot(now: Date, windowMinutes: number): Slot | null {
+export function activeSlot(now: Date): Slot | null {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Nicosia",
     hour: "2-digit",
@@ -37,11 +38,8 @@ export function activeSlot(now: Date, windowMinutes: number): Slot | null {
   const hour = Number(parts.find((p) => p.type === "hour")!.value);
   const minute = Number(parts.find((p) => p.type === "minute")!.value);
   const nowMinutes = hour * 60 + minute;
-  for (const s of SLOT_SCHEDULE) {
-    const start = s.hour * 60 + s.minute;
-    if (nowMinutes >= start && nowMinutes < start + windowMinutes) return s.slot;
-  }
-  return null;
+  const s = SLOT_SCHEDULE.find((w) => nowMinutes >= w.startMinutes && nowMinutes < w.endMinutes);
+  return s ? s.slot : null;
 }
 
 export function localDate(d: Date = new Date()): string {
@@ -54,9 +52,9 @@ export function localDate(d: Date = new Date()): string {
 }
 
 const NEXT_TIME: Record<Slot, string> = {
-  morning: "сегодня в 17:00",
-  midday: "сегодня в 19:00",
-  evening: "завтра в 14:00",
+  morning: "сегодня попозже 🕐",
+  midday: "сегодня вечером 🌙",
+  evening: "завтра 🌅",
 };
 
 const PROGRESS_PATH = "progress.json";
@@ -80,7 +78,7 @@ async function main(): Promise<void> {
   // даже вне окна и даже если этот слот сегодня уже отмечен как проведённый.
   const slotEnv = process.env.SESSION_SLOT as Slot | undefined;
   const forced = Boolean(slotEnv);
-  const slot: Slot | null = slotEnv || activeSlot(new Date(), WINDOW_MINUTES);
+  const slot: Slot | null = slotEnv || activeSlot(new Date());
   if (!slot) {
     console.log("Сейчас не окно тренировки — выхожу без действий.");
     return;
