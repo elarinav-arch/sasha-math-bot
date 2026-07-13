@@ -73,21 +73,21 @@
       "wrong": 0
     },
     "21/3": {
-      "level": 1,
-      "lastSeen": "2026-07-05T12:17:39.322Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-13T12:29:52.697Z",
+      "correct": 2,
       "wrong": 0
     },
     "2x6": {
-      "level": 1,
-      "lastSeen": "2026-07-05T12:18:10.350Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-13T12:30:13.855Z",
+      "correct": 2,
       "wrong": 0
     },
     "10/5": {
-      "level": 1,
-      "lastSeen": "2026-07-05T12:19:40.715Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-13T12:31:53.233Z",
+      "correct": 2,
       "wrong": 0
     },
     "12/6": {
@@ -661,20 +661,50 @@
       "wrong": 0
     },
     "54/6": {
-      "level": 0,
-      "lastSeen": "2026-07-12T18:31:17.946Z",
-      "correct": 0,
-      "wrong": 1
+      "level": 1,
+      "lastSeen": "2026-07-13T12:32:18.350Z",
+      "correct": 1,
+      "wrong": 2
     },
     "8x4": {
-      "level": 0,
-      "lastSeen": "2026-07-12T18:35:34.282Z",
-      "correct": 0,
+      "level": 1,
+      "lastSeen": "2026-07-13T12:31:59.362Z",
+      "correct": 1,
       "wrong": 1
     },
     "32/4": {
       "level": 1,
       "lastSeen": "2026-07-12T18:35:42.874Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "18/2": {
+      "level": 0,
+      "lastSeen": "2026-07-13T12:29:41.124Z",
+      "correct": 0,
+      "wrong": 1
+    },
+    "40/5": {
+      "level": 1,
+      "lastSeen": "2026-07-13T12:30:09.672Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "8x9": {
+      "level": 1,
+      "lastSeen": "2026-07-13T12:30:22.875Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "64/8": {
+      "level": 0,
+      "lastSeen": "2026-07-13T12:31:43.231Z",
+      "correct": 0,
+      "wrong": 1
+    },
+    "9x2": {
+      "level": 1,
+      "lastSeen": "2026-07-13T12:31:49.391Z",
       "correct": 1,
       "wrong": 0
     }
@@ -729,6 +759,15 @@
         "midday",
         "evening"
       ]
+    },
+    {
+      "date": "2026-07-13",
+      "sessions": 1,
+      "stars": 2,
+      "card": null,
+      "attemptedSlots": [
+        "morning"
+      ]
     }
   ],
   "streak": 0,
@@ -739,5 +778,5 @@
     "c16",
     "c15"
   ],
-  "totalStars": 36
+  "totalStars": 38
 }
