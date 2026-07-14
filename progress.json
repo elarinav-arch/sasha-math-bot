@@ -19,9 +19,9 @@
       "wrong": 3
     },
     "2x3": {
-      "level": 1,
-      "lastSeen": "2026-07-05T09:39:19.172Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-14T17:57:27.638Z",
+      "correct": 2,
       "wrong": 0
     },
     "2x5": {
@@ -427,9 +427,9 @@
       "wrong": 0
     },
     "6x4": {
-      "level": 2,
-      "lastSeen": "2026-07-11T16:36:15.200Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-07-14T17:56:50.567Z",
+      "correct": 3,
       "wrong": 0
     },
     "5x2": {
@@ -535,9 +535,9 @@
       "wrong": 0
     },
     "6x5": {
-      "level": 1,
-      "lastSeen": "2026-07-11T14:53:44.767Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-07-14T17:57:32.454Z",
+      "correct": 2,
       "wrong": 0
     },
     "72/9": {
@@ -638,9 +638,9 @@
     },
     "7x7": {
       "level": 0,
-      "lastSeen": "2026-07-13T16:05:58.918Z",
+      "lastSeen": "2026-07-14T17:58:47.929Z",
       "correct": 1,
-      "wrong": 1
+      "wrong": 2
     },
     "16/2": {
       "level": 1,
@@ -716,9 +716,9 @@
     },
     "45/5": {
       "level": 0,
-      "lastSeen": "2026-07-13T16:09:29.074Z",
+      "lastSeen": "2026-07-14T17:57:14.480Z",
       "correct": 0,
-      "wrong": 1
+      "wrong": 2
     },
     "9x3": {
       "level": 1,
@@ -735,6 +735,36 @@
     "9x5": {
       "level": 1,
       "lastSeen": "2026-07-13T16:12:34.668Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "9x7": {
+      "level": 1,
+      "lastSeen": "2026-07-14T17:56:42.950Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "63/7": {
+      "level": 1,
+      "lastSeen": "2026-07-14T17:57:00.558Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "9x6": {
+      "level": 1,
+      "lastSeen": "2026-07-14T17:57:23.419Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "9x9": {
+      "level": 1,
+      "lastSeen": "2026-07-14T17:57:42.252Z",
+      "correct": 1,
+      "wrong": 0
+    },
+    "81/9": {
+      "level": 1,
+      "lastSeen": "2026-07-14T17:57:48.721Z",
       "correct": 1,
       "wrong": 0
     }
@@ -802,12 +832,13 @@
     },
     {
       "date": "2026-07-14",
-      "sessions": 0,
-      "stars": 0,
+      "sessions": 1,
+      "stars": 2,
       "card": null,
       "attemptedSlots": [
         "morning",
-        "midday"
+        "midday",
+        "evening"
       ]
     }
   ],
@@ -819,5 +850,5 @@
     "c16",
     "c15"
   ],
-  "totalStars": 40
+  "totalStars": 42
 }
