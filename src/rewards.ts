@@ -18,21 +18,37 @@ export function recordSession(p: Progress, date: string, stars: number): DayReco
 }
 
 export function dayGoalMet(day: DayRecord): boolean {
-  return day.sessions >= 2 && day.stars >= 6;
+  return (day.sessions >= 2 && day.stars >= 6) || Boolean(day.bonusRoundDone);
 }
 
-const RARITY_WEIGHT: Record<Card["rarity"], number> = { common: 70, rare: 25, legendary: 5 };
+// Доли по УРОВНЮ редкости (в сумме 100) — легендарки специально попадаются заметно
+// чаще обычной "честной" редкости, это мотивационная фишка коллекции. Выбор идёт
+// в два шага (уровень редкости → конкретная карта внутри него), поэтому реальная
+// вероятность уровня не зависит от того, сколько карт в нём осталось несобранными.
+const RARITY_WEIGHT: Record<Card["rarity"], number> = { common: 55, rare: 30, legendary: 15 };
 
 export function pickNewCard(p: Progress, rng: () => number = Math.random): Card | null {
   const pool = CARDS.filter((c) => !p.cards.includes(c.id));
   if (pool.length === 0) return null;
-  const total = pool.reduce((s, c) => s + RARITY_WEIGHT[c.rarity], 0);
-  let r = rng() * total;
-  for (const c of pool) {
-    r -= RARITY_WEIGHT[c.rarity];
-    if (r <= 0) return c;
+
+  const byRarity: Record<Card["rarity"], Card[]> = { common: [], rare: [], legendary: [] };
+  for (const c of pool) byRarity[c.rarity].push(c);
+  const tiers = (Object.keys(RARITY_WEIGHT) as Array<Card["rarity"]>).filter((r) => byRarity[r].length > 0);
+
+  const total = tiers.reduce((sum, r) => sum + RARITY_WEIGHT[r], 0);
+  let roll = rng() * total;
+  let tier = tiers[tiers.length - 1];
+  for (const r of tiers) {
+    roll -= RARITY_WEIGHT[r];
+    if (roll <= 0) {
+      tier = r;
+      break;
+    }
   }
-  return pool[pool.length - 1];
+
+  const candidates = byRarity[tier];
+  const idx = Math.min(candidates.length - 1, Math.floor(rng() * candidates.length));
+  return candidates[idx];
 }
 
 // Вызывается в вечернем запуске; возвращает карточки для объявления

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { nextReply, type Update } from "../src/telegram.js";
+import { nextReply, TelegramIO, type Telegram, type Update } from "../src/telegram.js";
 
 function upd(id: number, chatId: number, text: string, dateSec: number): Update {
   return { update_id: id, message: { message_id: id, date: dateSec, text, chat: { id: chatId } } };
@@ -23,4 +23,17 @@ test("returns null text when nothing relevant", () => {
   const r = nextReply(updates, 42, 0);
   expect(r.text).toBeNull();
   expect(r.offset).toBe(11);
+});
+
+test("extendDeadline sets a fresh deadline relative to now, not additive on the stale original", () => {
+  const fakeTg = {} as unknown as Telegram;
+  // Исходный дедлайн — далеко в прошлом (условный старт сессии), чтобы аддитивный
+  // баг (this.deadlineMs += extraMs, отсчёт от СТАРОГО значения) дал результат,
+  // который явно НЕ близок к "сейчас + extraMs".
+  const io = new TelegramIO(fakeTg, 1, 1_000_000, 1_000_000 + 60 * 60_000);
+  const before = Date.now();
+  io.extendDeadline(20 * 60_000);
+  const deadline = (io as unknown as { deadlineMs: number }).deadlineMs;
+  expect(deadline).toBeGreaterThanOrEqual(before + 20 * 60_000 - 1000);
+  expect(deadline).toBeLessThanOrEqual(before + 20 * 60_000 + 1000);
 });

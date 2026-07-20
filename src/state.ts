@@ -13,6 +13,7 @@ export interface DayRecord {
   stars: number;
   card: string | null; // id карточки, выданной за этот день
   attemptedSlots?: string[]; // какие слоты дня уже запускались (дедуп частых тиков cron)
+  bonusRoundDone?: boolean; // прошла бонусный раунд — карточка засчитывается, даже если звёзд не хватило
 }
 
 export interface Progress {

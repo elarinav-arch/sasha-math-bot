@@ -74,6 +74,13 @@ export class TelegramIO implements SessionIO {
     await this.tg.sendMessage(this.chatId, text);
   }
 
+  // Продлевает окно ожидания ответов (например, для бонусного раунда после основной сессии).
+  // Отсчёт — от текущего момента, а не от старого дедлайна: иначе итоговое окно
+  // зависело бы от того, сколько времени уже прошло с начала исходной сессии.
+  extendDeadline(extraMs: number): void {
+    this.deadlineMs = Date.now() + extraMs;
+  }
+
   async waitForReply(timeoutMs: number): Promise<string | null> {
     const until = Math.min(Date.now() + timeoutMs, this.deadlineMs);
     while (Date.now() < until) {

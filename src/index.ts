@@ -60,6 +60,8 @@ const NEXT_TIME: Record<Slot, string> = {
 const PROGRESS_PATH = "progress.json";
 const QUESTIONS = 10;
 const WINDOW_MINUTES = 60;
+const BONUS_QUESTIONS = 5;
+const BONUS_WINDOW_MINUTES = 20;
 
 async function announceCard(tg: Telegram, chatId: number, card: Card, title: string): Promise<void> {
   const caption = `${title}\n${card.emoji} ${card.name}\nРедкость: ${rarityLabel(card.rarity)}`;
@@ -117,6 +119,24 @@ async function main(): Promise<void> {
   }
 
   if (slot === "evening") {
+    if (!dayGoalMet(day)) {
+      await tg.sendMessage(
+        chatId,
+        `🎯 Бонусный раунд! Ещё ${BONUS_QUESTIONS} примеров — и сегодняшняя карточка твоя, что бы ни было!`,
+      );
+      io.extendDeadline(BONUS_WINDOW_MINUTES * 60_000);
+      const bonusFacts = pickSessionFacts(progress, allFacts(), BONUS_QUESTIONS, new Date());
+      const bonusResult = await runSession(io, progress, bonusFacts);
+      if (bonusResult.finished && bonusResult.answered > 0) {
+        const bonusStars = starsForSession(bonusResult.correct, bonusResult.answered);
+        recordSession(progress, date, bonusStars);
+        day.bonusRoundDone = true;
+        await io.send(
+          `🏁 Бонус завершён: ${bonusResult.correct} из ${bonusResult.answered} верно! ${"⭐".repeat(bonusStars)}`,
+        );
+      }
+    }
+
     const { card, streakCard } = finishDay(progress, date);
     if (card) await announceCard(tg, chatId, card, "🎉 Дневная цель выполнена! Новая карточка:");
     if (streakCard) await announceCard(tg, chatId, streakCard, `🔥 Серия ${progress.streak} дней! Особая награда:`);
