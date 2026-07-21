@@ -913,11 +913,12 @@
       "stars": 0,
       "card": null,
       "attemptedSlots": [
-        "midday"
+        "midday",
+        "evening"
       ]
     }
   ],
-  "streak": 1,
+  "streak": 0,
   "cards": [
     "c05",
     "c23",
