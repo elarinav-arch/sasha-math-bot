@@ -565,10 +565,10 @@
       "wrong": 2
     },
     "36/6": {
-      "level": 1,
-      "lastSeen": "2026-07-11T16:35:37.442Z",
+      "level": 0,
+      "lastSeen": "2026-07-25T14:33:54.367Z",
       "correct": 1,
-      "wrong": 0
+      "wrong": 1
     },
     "14/2": {
       "level": 1,
@@ -950,6 +950,15 @@
         "midday",
         "evening"
       ]
+    },
+    {
+      "date": "2026-07-25",
+      "sessions": 1,
+      "stars": 1,
+      "card": null,
+      "attemptedSlots": [
+        "morning"
+      ]
     }
   ],
   "streak": 0,
@@ -962,5 +971,5 @@
     "c02",
     "c25"
   ],
-  "totalStars": 69
+  "totalStars": 70
 }
