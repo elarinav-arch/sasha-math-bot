@@ -120,6 +120,7 @@ async function main(): Promise<void> {
 
   if (slot === "evening") {
     if (!dayGoalMet(day)) {
+      console.log(`Дневная цель не набрана (${day.sessions} сессий, ${day.stars} звёзд) — предлагаю бонусный раунд.`);
       await tg.sendMessage(
         chatId,
         `🎯 Бонусный раунд! Ещё ${BONUS_QUESTIONS} примеров — и сегодняшняя карточка твоя, что бы ни было!`,
@@ -131,9 +132,12 @@ async function main(): Promise<void> {
         const bonusStars = starsForSession(bonusResult.correct, bonusResult.answered);
         recordSession(progress, date, bonusStars);
         day.bonusRoundDone = true;
+        console.log(`Бонусный раунд пройден: ${bonusResult.correct}/${bonusResult.answered}, +${bonusStars} звёзд. Карточка дня засчитана.`);
         await io.send(
           `🏁 Бонус завершён: ${bonusResult.correct} из ${bonusResult.answered} верно! ${"⭐".repeat(bonusStars)}`,
         );
+      } else {
+        console.log("Бонусный раунд предложен, но ответа не было — карточка дня не засчитана.");
       }
     }
 
