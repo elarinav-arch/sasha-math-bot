@@ -1024,11 +1024,12 @@
       "card": null,
       "attemptedSlots": [
         "morning",
-        "midday"
+        "midday",
+        "evening"
       ]
     }
   ],
-  "streak": 1,
+  "streak": 0,
   "cards": [
     "c05",
     "c23",
