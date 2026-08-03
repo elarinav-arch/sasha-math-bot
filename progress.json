@@ -67,9 +67,9 @@
       "wrong": 5
     },
     "4x4": {
-      "level": 1,
-      "lastSeen": "2026-08-02T12:01:47.154Z",
-      "correct": 2,
+      "level": 2,
+      "lastSeen": "2026-08-03T17:08:21.302Z",
+      "correct": 3,
       "wrong": 1
     },
     "21/3": {
@@ -571,9 +571,9 @@
       "wrong": 1
     },
     "14/2": {
-      "level": 1,
-      "lastSeen": "2026-08-02T12:03:55.883Z",
-      "correct": 2,
+      "level": 2,
+      "lastSeen": "2026-08-03T17:08:15.680Z",
+      "correct": 3,
       "wrong": 1
     },
     "7x5": {
@@ -583,9 +583,9 @@
       "wrong": 0
     },
     "6x9": {
-      "level": 1,
-      "lastSeen": "2026-08-02T12:01:53.495Z",
-      "correct": 2,
+      "level": 2,
+      "lastSeen": "2026-08-03T17:08:48.042Z",
+      "correct": 3,
       "wrong": 1
     },
     "6x8": {
@@ -721,9 +721,9 @@
       "wrong": 3
     },
     "9x3": {
-      "level": 1,
-      "lastSeen": "2026-07-13T16:10:56.309Z",
-      "correct": 1,
+      "level": 2,
+      "lastSeen": "2026-08-03T17:08:41.190Z",
+      "correct": 2,
       "wrong": 0
     },
     "27/3": {
@@ -763,9 +763,9 @@
       "wrong": 0
     },
     "81/9": {
-      "level": 2,
-      "lastSeen": "2026-07-28T12:54:13.662Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-03T17:08:11.369Z",
+      "correct": 3,
       "wrong": 0
     }
   },
@@ -1052,15 +1052,17 @@
     },
     {
       "date": "2026-08-03",
-      "sessions": 0,
-      "stars": 0,
-      "card": null,
+      "sessions": 1,
+      "stars": 3,
+      "card": "c19",
       "attemptedSlots": [
-        "morning"
-      ]
+        "morning",
+        "evening"
+      ],
+      "bonusRoundDone": true
     }
   ],
-  "streak": 0,
+  "streak": 1,
   "cards": [
     "c05",
     "c23",
@@ -1070,7 +1072,8 @@
     "c02",
     "c25",
     "c22",
-    "c08"
+    "c08",
+    "c19"
   ],
-  "totalStars": 96
+  "totalStars": 99
 }
