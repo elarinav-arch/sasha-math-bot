@@ -1067,7 +1067,8 @@
       "stars": 0,
       "card": null,
       "attemptedSlots": [
-        "morning"
+        "morning",
+        "midday"
       ]
     }
   ],
