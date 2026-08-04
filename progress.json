@@ -1060,6 +1060,15 @@
         "evening"
       ],
       "bonusRoundDone": true
+    },
+    {
+      "date": "2026-08-04",
+      "sessions": 0,
+      "stars": 0,
+      "card": null,
+      "attemptedSlots": [
+        "morning"
+      ]
     }
   ],
   "streak": 1,
