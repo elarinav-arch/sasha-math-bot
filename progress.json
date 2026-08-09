@@ -1115,6 +1115,15 @@
         "midday",
         "evening"
       ]
+    },
+    {
+      "date": "2026-08-09",
+      "sessions": 0,
+      "stars": 0,
+      "card": null,
+      "attemptedSlots": [
+        "morning"
+      ]
     }
   ],
   "streak": 0,
