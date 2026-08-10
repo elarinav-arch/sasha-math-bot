@@ -1133,7 +1133,8 @@
       "stars": 3,
       "card": null,
       "attemptedSlots": [
-        "morning"
+        "morning",
+        "midday"
       ]
     }
   ],
