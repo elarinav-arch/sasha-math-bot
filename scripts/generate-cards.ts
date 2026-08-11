@@ -19,28 +19,40 @@ function loadEnvKey(): string {
   throw new Error("GEMINI_API_KEY не найден: добавь его в .env или в окружение");
 }
 
-function prompt(card: Card): string {
-  const rarityStyle =
-    card.rarity === "legendary"
-      ? "epic golden ornate card frame, radiant glow, sparkles"
-      : card.rarity === "rare"
-        ? "silver-blue card frame with soft shine"
-        : "simple purple card frame";
+// Разные позы для визуального разнообразия коллекции — без этого все 60 карточек
+// выглядели бы как один и тот же "сидящий котик" в разных мастях.
+const POSES = [
+  "sitting upright, looking curiously at the camera",
+  "playful pose lying on its back with paws in the air, head tilted",
+  "mid-pounce, playful jumping pose, one paw raised",
+  "curled up sleepy in a cozy ball, eyes half-closed",
+  "stretching forward with front paws extended, back gently arched",
+  "walking pose, one paw lifted mid-step, tail up",
+  "peeking curiously from behind a soft blanket fold",
+  "sitting with one paw raised, as if waving hello",
+  "lying on its belly, front paws tucked in, alert expression",
+  "playfully batting at something just out of frame, one paw extended",
+];
+
+function poseFor(card: Card, index: number): string {
+  return POSES[index % POSES.length];
+}
+
+function prompt(card: Card, index: number): string {
   return (
-    `Collectible trading card illustration for a kids' math game: cute chibi robot animal ` +
-    `"${card.name}" (robotic pet). Style inspired by the Murder Drones cartoon aesthetic: ` +
-    `glossy dark metal body, glowing purple neon accents, big expressive friendly eyes. ` +
-    `Kid-appropriate, cheerful, absolutely not scary. Centered character, square format, ` +
-    `dark background with soft neon glow, ${rarityStyle}. No text, no letters on the image.`
+    `Extremely adorable high-quality realistic photo of a ${card.name} cat/kitten, ` +
+    `${poseFor(card, index)}. Big expressive eyes, soft natural window light, cozy blurred ` +
+    `background, close-up professional pet photography style, square format, gentle rounded ` +
+    `card-like framing, maximum cuteness. No text, no letters on the image.`
   );
 }
 
-async function generate(ai: GoogleGenAI, card: Card): Promise<Buffer | null> {
+async function generate(ai: GoogleGenAI, card: Card, index: number): Promise<Buffer | null> {
   for (const model of IMAGE_MODELS) {
     try {
       const response = await ai.models.generateContent({
         model,
-        contents: prompt(card),
+        contents: prompt(card, index),
         config: { responseModalities: ["TEXT", "IMAGE"] },
       });
       for (const part of response.candidates?.[0]?.content?.parts ?? []) {
@@ -59,16 +71,18 @@ async function main(): Promise<void> {
   const ai = new GoogleGenAI({ apiKey: loadEnvKey() });
   mkdirSync("cards", { recursive: true });
   const all = [...CARDS, ...Object.values(STREAK_CARDS)];
+  const limit = process.argv[2] ? Number(process.argv[2]) : Infinity;
   let done = 0;
   let failed = 0;
-  for (const card of all) {
+  for (let i = 0; i < all.length && done + failed < limit; i++) {
+    const card = all[i];
     const path = `cards/${card.id}.png`;
     if (existsSync(path)) {
       console.log(`✓ ${path} уже есть — пропускаю`);
       continue;
     }
     console.log(`🎨 ${card.id}: ${card.name}…`);
-    const png = await generate(ai, card);
+    const png = await generate(ai, card, i);
     if (png) {
       writeFileSync(path, png);
       done++;
