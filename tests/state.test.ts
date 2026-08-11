@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   emptyProgress, loadProgress, saveProgress, getDay, hasAttemptedSlot, markSlotAttempted,
+  cardsWonToday, addCardWon,
 } from "../src/state.js";
 
 test("loadProgress returns empty progress when file is missing", () => {
@@ -45,4 +46,18 @@ test("markSlotAttempted records a slot once and is idempotent", () => {
   expect(hasAttemptedSlot(day, "midday")).toBe(false);
   markSlotAttempted(day, "morning");
   expect(day.attemptedSlots).toEqual(["morning"]);
+});
+
+test("cardsWonToday is empty for a fresh day and for legacy days without the field", () => {
+  const p = emptyProgress();
+  const day = getDay(p, "2026-07-05");
+  expect(cardsWonToday(day)).toEqual([]);
+});
+
+test("addCardWon appends card ids won during the day (one card can be won per session)", () => {
+  const p = emptyProgress();
+  const day = getDay(p, "2026-07-05");
+  addCardWon(day, "c01");
+  addCardWon(day, "c02");
+  expect(cardsWonToday(day)).toEqual(["c01", "c02"]);
 });

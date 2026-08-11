@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import { allFacts } from "./facts.js";
 import { pickSessionFacts } from "./leitner.js";
 import { parentReport } from "./report.js";
-import { dayGoalMet, finishDay, recordSession, starsForSession } from "./rewards.js";
+import { awardBonusCard, finishDay, recordSession, rollSessionCard, starsForSession } from "./rewards.js";
 import { rarityLabel, type Card } from "./cards.js";
 import { runSession } from "./session.js";
-import { getDay, hasAttemptedSlot, loadProgress, markSlotAttempted, saveProgress } from "./state.js";
+import { cardsWonToday, getDay, hasAttemptedSlot, loadProgress, markSlotAttempted, saveProgress } from "./state.js";
 import { Telegram, TelegramIO } from "./telegram.js";
 
 export type Slot = "morning" | "midday" | "evening";
@@ -64,7 +64,9 @@ const BONUS_QUESTIONS = 5;
 const BONUS_WINDOW_MINUTES = 20;
 
 async function announceCard(tg: Telegram, chatId: number, card: Card, title: string): Promise<void> {
-  const caption = `${title}\n${card.emoji} ${card.name}\nРедкость: ${rarityLabel(card.rarity)}`;
+  const caption =
+    `${title}\n${card.emoji} ${card.name}\nРедкость: ${rarityLabel(card.rarity)}` +
+    (card.fact ? `\n\n${card.fact}` : "");
   const imagePath = `cards/${card.id}.png`;
   if (existsSync(imagePath)) await tg.sendPhoto(chatId, imagePath, caption);
   else await tg.sendMessage(chatId, `🃏 ${caption}`);
@@ -105,25 +107,27 @@ async function main(): Promise<void> {
 
   if (result.finished && result.answered > 0) {
     const stars = starsForSession(result.correct, result.answered);
-    const day = recordSession(progress, date, stars);
+    const dayAfter = recordSession(progress, date, stars);
     await io.send(
       `🏁 Итог: ${result.correct} из ${result.answered} верно!\n` +
-        `${"⭐".repeat(stars)} +${stars} (за день: ${day.stars} ⭐)\n` +
+        `${"⭐".repeat(stars)} +${stars} (за день: ${dayAfter.stars} ⭐)\n` +
         `Следующая тренировка ${NEXT_TIME[slot]} 🐾`,
     );
+    const wonCard = rollSessionCard(progress, date, stars);
+    if (wonCard) await announceCard(tg, chatId, wonCard, "🃏 Новая карточка за отличную тренировку!");
   } else if (!result.finished) {
     await tg.sendMessage(
       chatId,
-      `Сегодня не вышло потренироваться — бывает! 🙂 Робо-питомцы будут ждать ${NEXT_TIME[slot]} 🐾`,
+      `Сегодня не вышло потренироваться — бывает! 🙂 Пушистая команда будет ждать ${NEXT_TIME[slot]} 🐾`,
     );
   }
 
   if (slot === "evening") {
-    if (!dayGoalMet(day)) {
-      console.log(`Дневная цель не набрана (${day.sessions} сессий, ${day.stars} звёзд) — предлагаю бонусный раунд.`);
+    if (cardsWonToday(day).length === 0) {
+      console.log("За весь день не выпало ни одной карточки — предлагаю бонусный раунд.");
       await tg.sendMessage(
         chatId,
-        `🎯 Бонусный раунд! Ещё ${BONUS_QUESTIONS} примеров — и сегодняшняя карточка твоя, что бы ни было!`,
+        `🎯 Бонусный раунд! Ещё ${BONUS_QUESTIONS} примеров — и карточка дня твоя, что бы ни было!`,
       );
       io.extendDeadline(BONUS_WINDOW_MINUTES * 60_000);
       const bonusFacts = pickSessionFacts(progress, allFacts(), BONUS_QUESTIONS, new Date());
@@ -132,21 +136,19 @@ async function main(): Promise<void> {
         const bonusStars = starsForSession(bonusResult.correct, bonusResult.answered);
         recordSession(progress, date, bonusStars);
         day.bonusRoundDone = true;
-        console.log(`Бонусный раунд пройден: ${bonusResult.correct}/${bonusResult.answered}, +${bonusStars} звёзд. Карточка дня засчитана.`);
         await io.send(
           `🏁 Бонус завершён: ${bonusResult.correct} из ${bonusResult.answered} верно! ${"⭐".repeat(bonusStars)}`,
         );
+        const bonusCard = awardBonusCard(progress, date);
+        if (bonusCard) await announceCard(tg, chatId, bonusCard, "🎉 Бонусная карточка — ты справилась!");
+        else console.log("Бонусный раунд пройден, но коллекция уже полностью собрана.");
       } else {
-        console.log("Бонусный раунд предложен, но ответа не было — карточка дня не засчитана.");
+        console.log("Бонусный раунд предложен, но ответа не было — карточка дня не гарантирована.");
       }
     }
 
-    const { card, streakCard } = finishDay(progress, date);
-    if (card) await announceCard(tg, chatId, card, "🎉 Дневная цель выполнена! Новая карточка:");
+    const { streakCard } = finishDay(progress, date);
     if (streakCard) await announceCard(tg, chatId, streakCard, `🔥 Серия ${progress.streak} дней! Особая награда:`);
-    if (!dayGoalMet(day) && day.sessions > 0) {
-      await tg.sendMessage(chatId, `Сегодня ${day.stars} ⭐ — чуть-чуть не хватило до карточки. Завтра получится! 💪`);
-    }
     if (parentChatId) await tg.sendMessage(parentChatId, parentReport(progress, date));
   }
 

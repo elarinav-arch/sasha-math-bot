@@ -11,9 +11,9 @@ export interface DayRecord {
   date: string; // YYYY-MM-DD (по Кипру)
   sessions: number;
   stars: number;
-  card: string | null; // id карточки, выданной за этот день
+  cardsWon?: string[]; // id карточек, выигранных ЗА ЭТОТ ДЕНЬ (по одной за сессию — их может быть несколько)
   attemptedSlots?: string[]; // какие слоты дня уже запускались (дедуп частых тиков cron)
-  bonusRoundDone?: boolean; // прошла бонусный раунд — карточка засчитывается, даже если звёзд не хватило
+  bonusRoundDone?: boolean; // прошла бонусный раунд — гарантирует карточку, если за день не выпало ни одной
 }
 
 export interface Progress {
@@ -40,7 +40,7 @@ export function saveProgress(path: string, p: Progress): void {
 export function getDay(p: Progress, date: string): DayRecord {
   let day = p.days.find((d) => d.date === date);
   if (!day) {
-    day = { date, sessions: 0, stars: 0, card: null };
+    day = { date, sessions: 0, stars: 0 };
     p.days.push(day);
   }
   return day;
@@ -53,4 +53,12 @@ export function hasAttemptedSlot(day: DayRecord, slot: string): boolean {
 export function markSlotAttempted(day: DayRecord, slot: string): void {
   const existing = day.attemptedSlots ?? [];
   day.attemptedSlots = existing.includes(slot) ? existing : [...existing, slot];
+}
+
+export function cardsWonToday(day: DayRecord): string[] {
+  return day.cardsWon ?? [];
+}
+
+export function addCardWon(day: DayRecord, cardId: string): void {
+  day.cardsWon = [...(day.cardsWon ?? []), cardId];
 }

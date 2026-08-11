@@ -1,5 +1,5 @@
 import { CARDS, STREAK_CARDS, cardById, type Card } from "./cards.js";
-import { getDay, type DayRecord, type Progress } from "./state.js";
+import { addCardWon, getDay, type DayRecord, type Progress } from "./state.js";
 
 export function starsForSession(correct: number, total: number): number {
   if (total === 0) return 0;
@@ -17,8 +17,11 @@ export function recordSession(p: Progress, date: string, stars: number): DayReco
   return day;
 }
 
-export function dayGoalMet(day: DayRecord): boolean {
-  return (day.sessions >= 2 && day.stars >= 6) || Boolean(day.bonusRoundDone);
+// Шанс на карточку СРАЗУ по итогам одной сессии — растёт вместе с точностью.
+export function cardChance(stars: number): number {
+  if (stars >= 3) return 1;
+  if (stars === 2) return 0.5;
+  return 0;
 }
 
 // Доли по УРОВНЮ редкости (в сумме 100) — легендарки специально попадаются заметно
@@ -51,41 +54,78 @@ export function pickNewCard(p: Progress, rng: () => number = Math.random): Card 
   return candidates[idx];
 }
 
-// Вызывается в вечернем запуске; возвращает карточки для объявления
-export function finishDay(
+// Пытается выдать карточку сразу по итогам сессии (шанс зависит от звёзд).
+export function rollSessionCard(
   p: Progress,
   date: string,
+  stars: number,
   rng: () => number = Math.random,
-): { card: Card | null; streakCard: Card | null } {
+): Card | null {
+  if (rng() >= cardChance(stars)) return null;
+  const card = pickNewCard(p, rng);
+  if (!card) return null;
+  addCardWon(getDay(p, date), card.id);
+  p.cards.push(card.id);
+  return card;
+}
+
+// Гарантированная карточка (без шанса) — награда за прохождение бонусного раунда.
+export function awardBonusCard(p: Progress, date: string, rng: () => number = Math.random): Card | null {
+  const card = pickNewCard(p, rng);
+  if (!card) return null;
+  addCardWon(getDay(p, date), card.id);
+  p.cards.push(card.id);
+  return card;
+}
+
+// Для серии дней (streak) важно участие — 2+ сессии, ИЛИ пройденный бонусный раунд
+// (даже если обычных сессий было меньше двух): бонусный раунд не должен стоить streak.
+export function dayParticipated(day: DayRecord): boolean {
+  return day.sessions >= 2 || Boolean(day.bonusRoundDone);
+}
+
+// Вызывается в вечернем запуске; отвечает только за серию дней и её награды —
+// обычные карточки коллекции теперь выдаются per-session через rollSessionCard/awardBonusCard.
+export function finishDay(p: Progress, date: string): { streakCard: Card | null } {
   const day = getDay(p, date);
-  if (!dayGoalMet(day)) {
+  if (!dayParticipated(day)) {
     p.streak = 0;
-    return { card: null, streakCard: null };
+    return { streakCard: null };
   }
   p.streak += 1;
-  let card: Card | null = null;
-  if (!day.card) {
-    card = pickNewCard(p, rng);
-    if (card) {
-      day.card = card.id;
-      p.cards.push(card.id);
-    }
-  }
   let streakCard: Card | null = null;
   const sc = STREAK_CARDS[p.streak];
   if (sc && !p.cards.includes(sc.id)) {
     p.cards.push(sc.id);
     streakCard = sc;
   }
-  return { card, streakCard };
+  return { streakCard };
 }
 
+// Числитель и знаменатель дроби считаются из ОДНОГО пула (текущий сезон: коты + серии),
+// иначе легаси-карточки прошлого сезона искажали бы прогресс — например, показывали бы
+// "1 из 64" при нуле собранных котов, или даже "70 из 64" при полностью собранной новой
+// коллекции вместе со старыми карточками (числитель превысил бы знаменатель).
 export function collectionSummary(p: Progress): string {
-  const owned = p.cards.map(cardById).filter((c): c is Card => Boolean(c));
+  const activeIds = new Set([...CARDS, ...Object.values(STREAK_CARDS)].map((c) => c.id));
+  const ownedActive = p.cards
+    .filter((id) => activeIds.has(id))
+    .map(cardById)
+    .filter((c): c is Card => Boolean(c));
+  const ownedLegacy = p.cards
+    .filter((id) => !activeIds.has(id))
+    .map(cardById)
+    .filter((c): c is Card => Boolean(c));
   const totalCount = CARDS.length + Object.keys(STREAK_CARDS).length;
-  const head =
-    `🃏 Коллекция Александры: ${owned.length} из ${totalCount} карточек\n` +
-    `⭐ Всего звёзд: ${p.totalStars} | 🔥 Серия дней: ${p.streak}`;
-  if (owned.length === 0) return head + "\nПока пусто — но первая карточка уже близко!";
-  return head + "\n\n" + owned.map((c) => `${c.emoji} ${c.name}`).join("\n");
+
+  const lines = [
+    `🃏 Коллекция Александры: ${ownedActive.length} из ${totalCount} карточек`,
+    `⭐ Всего звёзд: ${p.totalStars} | 🔥 Серия дней: ${p.streak}`,
+  ];
+  if (ownedActive.length === 0) lines.push("Пока пусто — но первая карточка уже близко!");
+  else lines.push("", ...ownedActive.map((c) => `${c.emoji} ${c.name}`));
+  if (ownedLegacy.length > 0) {
+    lines.push("", `🎖️ Из прежней коллекции сохранено: ${ownedLegacy.length}`, ...ownedLegacy.map((c) => `${c.emoji} ${c.name}`));
+  }
+  return lines.join("\n");
 }
