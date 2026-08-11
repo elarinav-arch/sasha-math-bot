@@ -55,9 +55,9 @@
       "wrong": 3
     },
     "2x2": {
-      "level": 2,
-      "lastSeen": "2026-07-15T17:16:38.902Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:01:15.805Z",
+      "correct": 3,
       "wrong": 0
     },
     "24/3": {
@@ -301,9 +301,9 @@
       "wrong": 0
     },
     "4x5": {
-      "level": 2,
-      "lastSeen": "2026-07-17T14:03:22.750Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:01:37.087Z",
+      "correct": 3,
       "wrong": 0
     },
     "5x8": {
@@ -343,9 +343,9 @@
       "wrong": 0
     },
     "4x3": {
-      "level": 2,
-      "lastSeen": "2026-07-17T12:27:45.662Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:01:54.200Z",
+      "correct": 3,
       "wrong": 0
     },
     "72/8": {
@@ -373,9 +373,9 @@
       "wrong": 0
     },
     "4x8": {
-      "level": 2,
-      "lastSeen": "2026-07-28T17:12:51.790Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:01:32.894Z",
+      "correct": 3,
       "wrong": 0
     },
     "4x9": {
@@ -397,9 +397,9 @@
       "wrong": 0
     },
     "36/9": {
-      "level": 2,
-      "lastSeen": "2026-07-18T16:34:42.659Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:02:00.331Z",
+      "correct": 3,
       "wrong": 0
     },
     "5x4": {
@@ -445,9 +445,9 @@
       "wrong": 0
     },
     "5x5": {
-      "level": 2,
-      "lastSeen": "2026-07-18T12:13:09.089Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:01:19.648Z",
+      "correct": 3,
       "wrong": 0
     },
     "5x9": {
@@ -487,9 +487,9 @@
       "wrong": 0
     },
     "5x6": {
-      "level": 2,
-      "lastSeen": "2026-07-18T14:33:53.276Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:01:41.985Z",
+      "correct": 3,
       "wrong": 0
     },
     "24/4": {
@@ -505,9 +505,9 @@
       "wrong": 1
     },
     "7x2": {
-      "level": 2,
-      "lastSeen": "2026-07-30T14:53:58.518Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:01:45.647Z",
+      "correct": 3,
       "wrong": 0
     },
     "18/3": {
@@ -535,9 +535,9 @@
       "wrong": 0
     },
     "6x5": {
-      "level": 2,
-      "lastSeen": "2026-07-14T17:57:32.454Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:01:11.393Z",
+      "correct": 3,
       "wrong": 0
     },
     "72/9": {
@@ -643,9 +643,9 @@
       "wrong": 3
     },
     "16/2": {
-      "level": 2,
-      "lastSeen": "2026-07-31T12:54:48.599Z",
-      "correct": 2,
+      "level": 3,
+      "lastSeen": "2026-08-11T15:01:50.348Z",
+      "correct": 3,
       "wrong": 0
     },
     "8x2": {
@@ -1140,11 +1140,14 @@
     },
     {
       "date": "2026-08-11",
-      "sessions": 0,
-      "stars": 0,
+      "sessions": 1,
+      "stars": 3,
       "attemptedSlots": [
         "morning",
         "midday"
+      ],
+      "cardsWon": [
+        "cat28"
       ]
     }
   ],
@@ -1161,7 +1164,8 @@
     "c08",
     "c19",
     "c24",
-    "c30"
+    "c30",
+    "cat28"
   ],
-  "totalStars": 121
+  "totalStars": 124
 }
