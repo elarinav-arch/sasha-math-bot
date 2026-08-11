@@ -38,7 +38,29 @@ function poseFor(card: Card, index: number): string {
   return POSES[index % POSES.length];
 }
 
+// Карточки за серию дней — не порода, а тематический "бейдж" под их новые названия
+// (Бронзовая лапка / Серебряный бантик / Золотые усы / Бриллиантовый хвост).
+const STREAK_PROMPTS: Record<string, string> = {
+  s03:
+    "Extremely adorable high-quality realistic close-up photo of a cute cat's single front paw " +
+    "with soft bronze-toned lighting, resting on a cozy blanket, shallow depth of field, square " +
+    "format, gentle rounded card-like framing. No text, no letters, no numbers on the image.",
+  s07:
+    "Extremely adorable high-quality realistic photo of a cute kitten wearing a small silver satin " +
+    "bow around its neck, sitting proudly, soft silvery lighting, cozy blurred background, square " +
+    "format, gentle rounded card-like framing. No text, no letters on the image.",
+  s14:
+    "Extremely adorable high-quality realistic close-up photo of a cute cat's face, focus on its " +
+    "long elegant whiskers catching warm golden-hour light, soft golden lighting, cozy blurred " +
+    "background, square format, gentle rounded card-like framing. No text, no letters on the image.",
+  s30:
+    "Extremely adorable high-quality realistic photo of a fluffy cat's tail curled elegantly, with " +
+    "soft sparkly diamond-like light particles in the air around it, cool blue-white lighting, cozy " +
+    "blurred background, square format, gentle rounded card-like framing. No text on the image.",
+};
+
 function prompt(card: Card, index: number): string {
+  if (STREAK_PROMPTS[card.id]) return STREAK_PROMPTS[card.id];
   return (
     `Extremely adorable high-quality realistic photo of a ${card.name} cat/kitten, ` +
     `${poseFor(card, index)}. Big expressive eyes, soft natural window light, cozy blurred ` +
