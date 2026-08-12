@@ -1157,14 +1157,15 @@
       "stars": 3,
       "attemptedSlots": [
         "morning",
-        "midday"
+        "midday",
+        "evening"
       ],
       "cardsWon": [
         "cat58"
       ]
     }
   ],
-  "streak": 2,
+  "streak": 0,
   "cards": [
     "c05",
     "c23",
