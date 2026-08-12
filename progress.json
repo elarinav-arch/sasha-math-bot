@@ -1156,7 +1156,8 @@
       "sessions": 1,
       "stars": 3,
       "attemptedSlots": [
-        "morning"
+        "morning",
+        "midday"
       ],
       "cardsWon": [
         "cat58"
