@@ -1190,7 +1190,8 @@
       "stars": 0,
       "attemptedSlots": [
         "morning",
-        "midday"
+        "midday",
+        "evening"
       ]
     }
   ],
