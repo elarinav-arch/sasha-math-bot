@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { SessionIO } from "./session.js";
 
 const API = "https://api.telegram.org";
 
@@ -129,5 +130,33 @@ export class TelegramPoller {
 
   send(chatId: number, text: string): Promise<void> {
     return this.tg.sendMessage(chatId, text);
+  }
+}
+
+// Реализация SessionIO для ОДНОГО ребёнка поверх общего TelegramPoller — сама
+// не опрашивает Telegram, а просто регистрирует ожидание у поллера.
+export class PolledIO implements SessionIO {
+  private deadlineMs: number;
+
+  constructor(
+    private poller: TelegramPoller,
+    private chatId: number,
+    deadlineMs: number,
+  ) {
+    this.deadlineMs = deadlineMs;
+  }
+
+  send(text: string): Promise<void> {
+    return this.poller.send(this.chatId, text);
+  }
+
+  extendDeadline(extraMs: number): void {
+    this.deadlineMs = Date.now() + extraMs;
+  }
+
+  async waitForReply(timeoutMs: number): Promise<string | null> {
+    const remaining = Math.min(timeoutMs, this.deadlineMs - Date.now());
+    if (remaining <= 0) return null;
+    return this.poller.waitFor(this.chatId, remaining);
   }
 }

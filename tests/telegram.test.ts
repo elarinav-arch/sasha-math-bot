@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { dispatchUpdates, TelegramPoller, type Update } from "../src/telegram.js";
+import { dispatchUpdates, PolledIO, TelegramPoller, type Update } from "../src/telegram.js";
 import type { Telegram } from "../src/telegram.js";
 
 function upd(id: number, chatId: number, text: string, dateSec: number, firstName?: string): Update {
@@ -136,4 +136,44 @@ test("regression: a shorter waitFor's timeout does not delete a longer concurren
 
   expect(await w2).toBe("6");
   vi.useRealTimers();
+});
+
+test("PolledIO.send delegates to the poller for its own chatId", async () => {
+  const sent: { chatId: number | string; text: string }[] = [];
+  const tg = { getUpdates: async () => [], sendMessage: async (chatId: number | string, text: string) => { sent.push({ chatId, text }); } } as unknown as Telegram;
+  const poller = new TelegramPoller(tg, 0);
+  const io = new PolledIO(poller, 42, Date.now() + 60_000);
+  await io.send("привет");
+  expect(sent).toEqual([{ chatId: 42, text: "привет" }]);
+});
+
+test("PolledIO.waitForReply resolves via the poller when a matching message is dispatched", async () => {
+  const tg = fakeTelegram(async () => [upd(1, 42, "6", 1000)]);
+  const poller = new TelegramPoller(tg, 0);
+  const io = new PolledIO(poller, 42, Date.now() + 60_000);
+  const replyPromise = io.waitForReply(5000);
+  await poller.pollOnce(() => {});
+  expect(await replyPromise).toBe("6");
+});
+
+test("PolledIO.waitForReply returns null once the per-child deadline has passed, even with time left on timeoutMs", async () => {
+  vi.useFakeTimers();
+  const tg = fakeTelegram(async () => []);
+  const poller = new TelegramPoller(tg, 0);
+  const io = new PolledIO(poller, 42, Date.now() + 50); // дедлайн через 50мс
+  const p = io.waitForReply(5000); // просит подождать 5с, но дедлайн раньше
+  vi.advanceTimersByTime(100);
+  expect(await p).toBeNull();
+  vi.useRealTimers();
+});
+
+test("PolledIO.extendDeadline resets the deadline relative to now, not additive on the stale original", () => {
+  const tg = fakeTelegram(async () => []);
+  const poller = new TelegramPoller(tg, 0);
+  const io = new PolledIO(poller, 42, 1_000_000); // старый дедлайн — в прошлом
+  const before = Date.now();
+  io.extendDeadline(20 * 60_000);
+  const deadline = (io as unknown as { deadlineMs: number }).deadlineMs;
+  expect(deadline).toBeGreaterThanOrEqual(before + 20 * 60_000 - 1000);
+  expect(deadline).toBeLessThanOrEqual(before + 20 * 60_000 + 1000);
 });
