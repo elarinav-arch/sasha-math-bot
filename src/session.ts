@@ -17,7 +17,7 @@ export interface SessionResult {
 }
 
 const REPLY_TIMEOUT_MS = 4 * 60 * 1000;
-// первый ответ ждём весь час окна (реальный предел задаёт deadline в TelegramIO)
+// первый ответ ждём весь час окна (реальный предел задаёт deadline в PolledIO)
 const FIRST_REPLY_TIMEOUT_MS = 60 * 60 * 1000;
 const MIN_TO_STOP = 5;
 
