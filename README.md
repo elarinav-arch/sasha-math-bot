@@ -8,12 +8,11 @@ Telegram-бот, который 3 раза в день (примерно с 14:0
 ## Настройка
 
 1. **Бот:** напишите [@BotFather](https://t.me/BotFather) → `/newbot` → получите `TELEGRAM_BOT_TOKEN`.
-2. **Chat ID:** Александра (со своего аккаунта) отправляет боту `/start`.
-   Затем откройте `https://api.telegram.org/bot<TOKEN>/getUpdates` — в ответе будет
-   `message.chat.id`. Это `CHILD_CHAT_ID`. Свой `PARENT_CHAT_ID` узнайте так же
-   (напишите боту со своего аккаунта) — на него приходят вечерние отчёты.
+2. **Chat ID:** узнайте свой `PARENT_CHAT_ID` — напишите боту `/start` со своего
+   аккаунта, затем откройте `https://api.telegram.org/bot<TOKEN>/getUpdates` —
+   в ответе будет `message.chat.id`. На него приходят вечерние отчёты.
 3. **GitHub:** запушьте репозиторий (публичный), в `Settings → Secrets and variables → Actions`
-   добавьте `TELEGRAM_BOT_TOKEN`, `CHILD_CHAT_ID`, `PARENT_CHAT_ID`.
+   добавьте `TELEGRAM_BOT_TOKEN`, `PARENT_CHAT_ID`.
 4. **Проверка:** вкладка Actions → workflow `training` → `Run workflow` (slot = `morning`).
    Бот должен написать приветствие в течение минуты.
 5. **Командный режим:** придумайте код-приглашение (любая строка без пробелов,
@@ -75,4 +74,4 @@ Telegram-бот, который 3 раза в день (примерно с 14:0
 ## Разработка
 
 - `npm test` — тесты (vitest), `npm run typecheck` — проверка типов.
-- Ручной запуск локально: `TELEGRAM_BOT_TOKEN=... CHILD_CHAT_ID=... SESSION_SLOT=morning npm start`.
+- Ручной запуск локально: `TELEGRAM_BOT_TOKEN=... TEAM_INVITE_CODE=... SESSION_SLOT=morning npm start`.
