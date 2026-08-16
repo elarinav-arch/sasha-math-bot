@@ -1,5 +1,6 @@
 import { CARDS, STREAK_CARDS, cardById, type Card } from "./cards.js";
-import { addCardWon, getDay, type ChildProgress, type DayRecord } from "./state.js";
+import { addCardWon, getDay, type ChildProgress, type DayRecord, type TeamState } from "./state.js";
+import { isInWeek } from "./calendar.js";
 
 export function starsForSession(correct: number, total: number): number {
   if (total === 0) return 0;
@@ -128,4 +129,22 @@ export function collectionSummary(p: ChildProgress): string {
     lines.push("", `🎖️ Из прежней коллекции сохранено: ${ownedLegacy.length}`, ...ownedLegacy.map((c) => `${c.emoji} ${c.name}`));
   }
   return lines.join("\n");
+}
+
+export const WEEKLY_STARS_PER_CHILD = 20;
+
+export function weeklyStars(child: ChildProgress, weekStart: string): number {
+  return child.days.filter((d) => isInWeek(d.date, weekStart)).reduce((sum, d) => sum + d.stars, 0);
+}
+
+export function isActiveThisWeek(child: ChildProgress, weekStart: string): boolean {
+  return child.days.some((d) => isInWeek(d.date, weekStart) && d.sessions > 0);
+}
+
+// Держит weeklyGoal привязанным к ТЕКУЩЕЙ неделе — сбрасывает счётчик, если
+// сохранённая неделя устарела (первый вечерний запуск новой недели).
+export function ensureCurrentWeek(team: TeamState, weekStart: string): void {
+  if (team.weeklyGoal.weekStart !== weekStart) {
+    team.weeklyGoal = { weekStart, trophyAwarded: false };
+  }
 }

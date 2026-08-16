@@ -1,9 +1,10 @@
 import { expect, test } from "vitest";
-import { emptyChildProgress, getDay, cardsWonToday } from "../src/state.js";
+import { emptyChildProgress, emptyTeamState, getDay, cardsWonToday } from "../src/state.js";
 import { CARDS, STREAK_CARDS, cardById } from "../src/cards.js";
 import {
   starsForSession, recordSession, cardChance, rollSessionCard, awardBonusCard,
   dayParticipated, finishDay, pickNewCard, collectionSummary,
+  weeklyStars, isActiveThisWeek, ensureCurrentWeek,
 } from "../src/rewards.js";
 
 // rng, возвращающий по очереди заданные значения при последовательных вызовах.
@@ -209,4 +210,34 @@ test("collectionSummary never shows an impossible over-100% fraction even with l
   const text = collectionSummary(p);
   const totalActive = CARDS.length + Object.keys(STREAK_CARDS).length;
   expect(text).toContain(`${totalActive} из ${totalActive}`);
+});
+
+test("weeklyStars sums a child's stars within the given week only", () => {
+  const c = emptyChildProgress();
+  recordSession(c, "2026-08-17", 3); // понедельник этой недели
+  recordSession(c, "2026-08-23", 2); // воскресенье этой недели
+  recordSession(c, "2026-08-24", 3); // уже следующая неделя — не должно попасть
+  expect(weeklyStars(c, "2026-08-17")).toBe(5);
+});
+
+test("isActiveThisWeek is true only if a session happened within the week", () => {
+  const c = emptyChildProgress();
+  expect(isActiveThisWeek(c, "2026-08-17")).toBe(false);
+  recordSession(c, "2026-08-20", 1);
+  expect(isActiveThisWeek(c, "2026-08-17")).toBe(true);
+  expect(isActiveThisWeek(c, "2026-08-24")).toBe(false); // другая неделя
+});
+
+test("ensureCurrentWeek resets the weekly goal when the stored week is stale", () => {
+  const team = emptyTeamState();
+  team.weeklyGoal = { weekStart: "2026-08-10", trophyAwarded: true };
+  ensureCurrentWeek(team, "2026-08-17");
+  expect(team.weeklyGoal).toEqual({ weekStart: "2026-08-17", trophyAwarded: false });
+});
+
+test("ensureCurrentWeek is a no-op when the stored week already matches", () => {
+  const team = emptyTeamState();
+  team.weeklyGoal = { weekStart: "2026-08-17", trophyAwarded: true };
+  ensureCurrentWeek(team, "2026-08-17");
+  expect(team.weeklyGoal).toEqual({ weekStart: "2026-08-17", trophyAwarded: true });
 });
