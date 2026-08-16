@@ -1,5 +1,15 @@
 {
   "children": {
+    "165030749": {
+      "chatId": 165030749,
+      "name": "Maxim",
+      "joinedAt": "2026-08-16T17:49:15.437Z",
+      "facts": {},
+      "days": [],
+      "streak": 0,
+      "cards": [],
+      "totalStars": 0
+    },
     "7260953209": {
       "chatId": 7260953209,
       "name": "Александра",
@@ -1205,7 +1215,8 @@
           "stars": 0,
           "attemptedSlots": [
             "morning",
-            "midday"
+            "midday",
+            "evening"
           ]
         }
       ],
@@ -1230,8 +1241,9 @@
     }
   },
   "weeklyGoal": {
-    "weekStart": "",
+    "weekStart": "2026-08-10",
     "trophyAwarded": false
   },
-  "trophyCards": []
+  "trophyCards": [],
+  "lastEveningWrapUp": "2026-08-16"
 }
