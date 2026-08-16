@@ -35,6 +35,16 @@ test("teamReport shows weekly progress toward the goal, scaled by active childre
   expect(text).toContain("5 из 20 ⭐"); // 1 активный ребёнок × 20
 });
 
+test("teamReport excludes a child who never trained this week from the weekly goal denominator", () => {
+  const team = emptyTeamState();
+  team.children[1] = emptyChildProgress(1, "Саша", "");
+  team.children[2] = emptyChildProgress(2, "Женя", ""); // не тренировалась вовсе на этой неделе
+  recordSession(team.children[1], "2026-08-17", 5);
+  const text = teamReport(team, "2026-08-17", "2026-08-17");
+  expect(text).toContain("5 из 20 ⭐"); // цель 1×20, а не 2×20=40 — Женя не в счёте
+  expect(text).toContain("(1 активных)");
+});
+
 test("teamReport with an empty team doesn't crash and shows zeros", () => {
   const team = emptyTeamState();
   const text = teamReport(team, "2026-08-17", "2026-08-17");
