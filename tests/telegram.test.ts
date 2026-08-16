@@ -86,3 +86,54 @@ test("send delegates to the underlying Telegram client", async () => {
   await poller.send(42, "привет");
   expect(sent).toEqual([{ chatId: 42, text: "привет" }]);
 });
+
+test("offset regression guard: a later empty poll does not reset offset back to 0", async () => {
+  const calls: number[] = [];
+  const tg = {
+    getUpdates: async (offset: number) => {
+      calls.push(offset);
+      return calls.length === 1 ? [upd(10, 100, "6", 1000)] : [];
+    },
+  } as unknown as Telegram;
+  const poller = new TelegramPoller(tg, 0);
+  await poller.pollOnce(() => {});
+  await poller.pollOnce(() => {});
+  expect(calls).toEqual([0, 11]);
+});
+
+test("two children with concurrent waitFor calls for different chatIds both resolve independently from one batch", async () => {
+  const tg = fakeTelegram(async () => [upd(1, 100, "6", 1000), upd(2, 200, "9", 1000)]);
+  const poller = new TelegramPoller(tg, 0);
+  const waitA = poller.waitFor(100, 5000);
+  const waitB = poller.waitFor(200, 5000);
+  await poller.pollOnce(() => {});
+  expect(await waitA).toBe("6");
+  expect(await waitB).toBe("9");
+});
+
+test("regression: a shorter waitFor's timeout does not delete a longer concurrent waitFor for the same chatId", async () => {
+  vi.useFakeTimers();
+  let pending: Update[] = [];
+  const tg = fakeTelegram(async () => {
+    const batch = pending;
+    pending = [];
+    return batch;
+  });
+  const poller = new TelegramPoller(tg, 0);
+
+  const w1 = poller.waitFor(42, 1000); // registered at t=0, times out at t=1000
+  await vi.advanceTimersByTimeAsync(200);
+  const w2 = poller.waitFor(42, 3000); // registered at t=200, times out at t=3200
+
+  await vi.advanceTimersByTimeAsync(800); // t=1000: w1's timer fires
+  expect(await w1).toBeNull();
+
+  // Message for chatId 42 arrives at t=1500, well within w2's window.
+  await vi.advanceTimersByTimeAsync(300); // t=1300
+  pending = [upd(1, 42, "6", 1500)];
+  await vi.advanceTimersByTimeAsync(200); // t=1500
+  await poller.pollOnce(() => {});
+
+  expect(await w2).toBe("6");
+  vi.useRealTimers();
+});

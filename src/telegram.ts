@@ -115,14 +115,15 @@ export class TelegramPoller {
 
   waitFor(chatId: number, timeoutMs: number): Promise<string | null> {
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.waiters.delete(chatId);
-        resolve(null);
-      }, timeoutMs);
-      this.waiters.set(chatId, (text) => {
+      const onMessage = (text: string) => {
         clearTimeout(timer);
         resolve(text);
-      });
+      };
+      const timer = setTimeout(() => {
+        if (this.waiters.get(chatId) === onMessage) this.waiters.delete(chatId);
+        resolve(null);
+      }, timeoutMs);
+      this.waiters.set(chatId, onMessage);
     });
   }
 
