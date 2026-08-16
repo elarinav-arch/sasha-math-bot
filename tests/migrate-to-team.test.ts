@@ -17,6 +17,18 @@ test("resolveChildIdentity returns null when both variables are missing", () => 
   expect(resolveChildIdentity({})).toBeNull();
 });
 
+test("resolveChildIdentity returns null when CHILD_CHAT_ID is whitespace-only", () => {
+  expect(resolveChildIdentity({ CHILD_CHAT_ID: "   ", CHILD_NAME: "Саша" })).toBeNull();
+});
+
+test("resolveChildIdentity returns null when CHILD_CHAT_ID is 0", () => {
+  expect(resolveChildIdentity({ CHILD_CHAT_ID: "0", CHILD_NAME: "Саша" })).toBeNull();
+});
+
+test("resolveChildIdentity returns null when CHILD_NAME is whitespace-only", () => {
+  expect(resolveChildIdentity({ CHILD_CHAT_ID: "42", CHILD_NAME: "   " })).toBeNull();
+});
+
 test("resolveChildIdentity returns the parsed identity when both variables are valid", () => {
   expect(resolveChildIdentity({ CHILD_CHAT_ID: "42", CHILD_NAME: "Саша" })).toEqual({ chatId: 42, name: "Саша" });
 });

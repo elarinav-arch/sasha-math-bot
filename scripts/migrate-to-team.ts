@@ -15,7 +15,7 @@ export function resolveChildIdentity(
 ): { chatId: number; name: string } | null {
   const chatId = Number(env.CHILD_CHAT_ID);
   const name = env.CHILD_NAME;
-  if (!env.CHILD_CHAT_ID || !Number.isFinite(chatId) || !name) return null;
+  if (!env.CHILD_CHAT_ID || !Number.isFinite(chatId) || !chatId || !name || !name.trim()) return null;
   return { chatId, name };
 }
 
