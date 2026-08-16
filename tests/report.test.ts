@@ -1,23 +1,43 @@
 import { expect, test } from "vitest";
-import { emptyChildProgress } from "../src/state.js";
+import { emptyChildProgress, emptyTeamState } from "../src/state.js";
 import { recordSession } from "../src/rewards.js";
-import { parentReport } from "../src/report.js";
+import { teamReport } from "../src/report.js";
 
-test("report shows sessions, stars, streak and weak facts", () => {
-  const p = emptyChildProgress();
-  recordSession(p, "2026-07-05", 3);
-  recordSession(p, "2026-07-05", 2);
-  p.streak = 4;
-  p.facts["7x8"] = { level: 0, lastSeen: null, correct: 1, wrong: 4 };
-  p.facts["54/6"] = { level: 1, lastSeen: null, correct: 2, wrong: 2 };
-  const text = parentReport(p, "2026-07-05");
-  expect(text).toContain("2 из 3");
-  expect(text).toContain("5");
-  expect(text).toContain("7 × 8");
-  expect(text).toContain("54 ÷ 6");
+test("teamReport summarizes today's and this week's team activity", () => {
+  const team = emptyTeamState();
+  team.children[1] = emptyChildProgress(1, "Саша", "");
+  team.children[2] = emptyChildProgress(2, "Женя", "");
+  recordSession(team.children[1], "2026-08-17", 3);
+  recordSession(team.children[1], "2026-08-17", 2);
+  recordSession(team.children[2], "2026-08-17", 1);
+  team.trophyCards = ["trophy01"];
+  const text = teamReport(team, "2026-08-17", "2026-08-17");
+  expect(text).toContain("Детей в команде: 2");
+  expect(text).toContain("тренировались сегодня: 2");
+  expect(text).toContain("3 сессий, 6 ⭐");
 });
 
-test("report without weak facts says so", () => {
-  const p = emptyChildProgress();
-  expect(parentReport(p, "2026-07-05")).toContain("Слабых мест не замечено");
+test("teamReport counts today's sessions and stars across all children", () => {
+  const team = emptyTeamState();
+  team.children[1] = emptyChildProgress(1, "Саша", "");
+  team.children[2] = emptyChildProgress(2, "Женя", "");
+  recordSession(team.children[1], "2026-08-17", 3); // 1 сессия, 3 звезды
+  recordSession(team.children[2], "2026-08-17", 2); // 1 сессия, 2 звезды
+  const text = teamReport(team, "2026-08-17", "2026-08-17");
+  expect(text).toContain("2 сессий, 5 ⭐");
+});
+
+test("teamReport shows weekly progress toward the goal, scaled by active children", () => {
+  const team = emptyTeamState();
+  team.children[1] = emptyChildProgress(1, "Саша", "");
+  recordSession(team.children[1], "2026-08-17", 5);
+  const text = teamReport(team, "2026-08-17", "2026-08-17");
+  expect(text).toContain("5 из 20 ⭐"); // 1 активный ребёнок × 20
+});
+
+test("teamReport with an empty team doesn't crash and shows zeros", () => {
+  const team = emptyTeamState();
+  const text = teamReport(team, "2026-08-17", "2026-08-17");
+  expect(text).toContain("Детей в команде: 0");
+  expect(text).toContain("0 из 0 ⭐");
 });
