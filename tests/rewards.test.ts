@@ -1,10 +1,10 @@
 import { expect, test } from "vitest";
 import { emptyChildProgress, emptyTeamState, getDay, cardsWonToday } from "../src/state.js";
-import { CARDS, STREAK_CARDS, cardById } from "../src/cards.js";
+import { CARDS, STREAK_CARDS, TROPHY_CARDS, cardById } from "../src/cards.js";
 import {
   starsForSession, recordSession, cardChance, rollSessionCard, awardBonusCard,
   dayParticipated, finishDay, pickNewCard, collectionSummary,
-  weeklyStars, isActiveThisWeek, ensureCurrentWeek,
+  weeklyStars, isActiveThisWeek, ensureCurrentWeek, finishWeek,
 } from "../src/rewards.js";
 
 // rng, возвращающий по очереди заданные значения при последовательных вызовах.
@@ -240,4 +240,55 @@ test("ensureCurrentWeek is a no-op when the stored week already matches", () => 
   team.weeklyGoal = { weekStart: "2026-08-17", trophyAwarded: true };
   ensureCurrentWeek(team, "2026-08-17");
   expect(team.weeklyGoal).toEqual({ weekStart: "2026-08-17", trophyAwarded: true });
+});
+
+test("finishWeek: goal not met when no child is active this week", () => {
+  const team = emptyTeamState();
+  const { goalMet, trophyCard } = finishWeek(team, "2026-08-17");
+  expect(goalMet).toBe(false);
+  expect(trophyCard).toBeNull();
+});
+
+test("finishWeek: goal scales with the number of active children, ignores inactive ones", () => {
+  const team = emptyTeamState();
+  team.children[1] = emptyChildProgress(1, "A", "");
+  team.children[2] = emptyChildProgress(2, "B", "");
+  team.children[3] = emptyChildProgress(3, "C", ""); // не тренировалась вовсе на этой неделе
+  recordSession(team.children[1], "2026-08-17", 10);
+  recordSession(team.children[1], "2026-08-18", 10); // 20 звёзд у A
+  recordSession(team.children[2], "2026-08-17", 10);
+  recordSession(team.children[2], "2026-08-18", 9); // 19 звёзд у B — итого 39, цель 2×20=40 (C не активна и не в счёт)
+  expect(finishWeek(team, "2026-08-17", () => 0).goalMet).toBe(false);
+  recordSession(team.children[2], "2026-08-19", 1); // добираем последнюю звезду — 40 из 40
+  expect(finishWeek(team, "2026-08-17", () => 0).goalMet).toBe(true);
+});
+
+test("finishWeek awards a trophy card to the whole team and doesn't duplicate within the same week", () => {
+  const team = emptyTeamState();
+  team.children[1] = emptyChildProgress(1, "A", "");
+  recordSession(team.children[1], "2026-08-17", 3);
+  recordSession(team.children[1], "2026-08-18", 3);
+  recordSession(team.children[1], "2026-08-19", 3);
+  recordSession(team.children[1], "2026-08-20", 3);
+  recordSession(team.children[1], "2026-08-21", 3);
+  recordSession(team.children[1], "2026-08-22", 3);
+  recordSession(team.children[1], "2026-08-23", 2); // 20 звёзд ровно, цель 1×20
+  const first = finishWeek(team, "2026-08-17", () => 0);
+  expect(first.goalMet).toBe(true);
+  expect(first.trophyCard).not.toBeNull();
+  expect(team.trophyCards).toContain(first.trophyCard!.id);
+  // повторный вызов в ту же неделю — трофей уже выдан, не дублируется
+  const second = finishWeek(team, "2026-08-17", () => 0);
+  expect(second.trophyCard).toBeNull();
+  expect(team.trophyCards).toHaveLength(1);
+});
+
+test("finishWeek returns trophyCard null (but goalMet true) once the whole trophy pool is exhausted", () => {
+  const team = emptyTeamState();
+  team.trophyCards = TROPHY_CARDS.map((c) => c.id); // весь пул уже собран
+  team.children[1] = emptyChildProgress(1, "A", "");
+  recordSession(team.children[1], "2026-08-17", 20);
+  const { goalMet, trophyCard } = finishWeek(team, "2026-08-17", () => 0);
+  expect(goalMet).toBe(true);
+  expect(trophyCard).toBeNull();
 });

@@ -1,4 +1,4 @@
-import { CARDS, STREAK_CARDS, cardById, type Card } from "./cards.js";
+import { CARDS, STREAK_CARDS, TROPHY_CARDS, cardById, pickTrophyCard, type Card } from "./cards.js";
 import { addCardWon, getDay, type ChildProgress, type DayRecord, type TeamState } from "./state.js";
 import { isInWeek } from "./calendar.js";
 
@@ -147,4 +147,25 @@ export function ensureCurrentWeek(team: TeamState, weekStart: string): void {
   if (team.weeklyGoal.weekStart !== weekStart) {
     team.weeklyGoal = { weekStart, trophyAwarded: false };
   }
+}
+
+// Вечер воскресенья: считает командную неделю и при достижении цели выдаёт трофей
+// ВСЕМ детям команды. Идемпотентно в пределах одной недели — повторный вызов
+// (например, повторный тик cron) не выдаёт второй трофей.
+export function finishWeek(
+  team: TeamState,
+  weekStart: string,
+  rng: () => number = Math.random,
+): { goalMet: boolean; trophyCard: Card | null } {
+  ensureCurrentWeek(team, weekStart);
+  const active = Object.values(team.children).filter((c) => isActiveThisWeek(c, weekStart));
+  const total = active.reduce((sum, c) => sum + weeklyStars(c, weekStart), 0);
+  const goal = active.length * WEEKLY_STARS_PER_CHILD;
+  const goalMet = active.length > 0 && total >= goal;
+  if (!goalMet) return { goalMet: false, trophyCard: null };
+  if (team.weeklyGoal.trophyAwarded) return { goalMet: true, trophyCard: null };
+  team.weeklyGoal.trophyAwarded = true;
+  const trophy = pickTrophyCard(team.trophyCards, rng);
+  if (trophy) team.trophyCards.push(trophy.id);
+  return { goalMet: true, trophyCard: trophy };
 }

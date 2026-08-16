@@ -123,7 +123,28 @@ export const STREAK_CARDS: Record<number, Card> = {
   30: { id: "s30", name: "Бриллиантовый хвост — месяц подряд!!!", rarity: "legendary", emoji: "💎🐈" },
 };
 
-const ALL: Card[] = [...LEGACY_ROBO_PETS, ...CARDS, ...Object.values(STREAK_CARDS)];
+// Командные трофеи — отдельный пул, выдаётся ТОЛЬКО за выполнение недельной командной
+// цели (см. finishWeek в rewards.ts), никогда через обычный pickNewCard. Величественные
+// коты, в отличие от милых питомцев в основной коллекции — подчёркивает особый статус.
+export const TROPHY_CARDS: Card[] = [
+  { id: "trophy01", name: "Снежный барс дружбы", rarity: "legendary", emoji: "🏆❄️", fact: "Команда справилась вместе — этот величественный барс достаётся всем!" },
+  { id: "trophy02", name: "Огненный лев отряда", rarity: "legendary", emoji: "🏆🔥", fact: "Ни один герой не побеждает в одиночку — заслуга всей команды." },
+  { id: "trophy03", name: "Штормовая пантера единства", rarity: "legendary", emoji: "🏆⚡", fact: "Вместе — быстрее и сильнее, чем поодиночке." },
+  { id: "trophy04", name: "Золотой тигр недели", rarity: "legendary", emoji: "🏆🐯", fact: "Редчайшая награда — только за настоящую командную неделю." },
+  { id: "trophy05", name: "Небесный рысь-страж", rarity: "legendary", emoji: "🏆🌤️", fact: "Наблюдает за командой сверху и гордится каждым участником." },
+  { id: "trophy06", name: "Изумрудный ягуар отряда", rarity: "legendary", emoji: "🏆💚", fact: "Символ команды, которая не бросает друг друга." },
+  { id: "trophy07", name: "Лунный волк-хранитель", rarity: "legendary", emoji: "🏆🌙", fact: "Ночью и днём — команда справляется вместе." },
+  { id: "trophy08", name: "Сапфировый леопард удачи", rarity: "legendary", emoji: "🏆💙", fact: "Настоящая удача — это когда рядом надёжная команда." },
+  { id: "trophy09", name: "Рубиновый феникс команды", rarity: "legendary", emoji: "🏆❤️", fact: "Даже если неделя была трудной — команда справилась и возродилась ярче." },
+];
+
+export function pickTrophyCard(ownedTrophyIds: string[], rng: () => number = Math.random): Card | null {
+  const pool = TROPHY_CARDS.filter((c) => !ownedTrophyIds.includes(c.id));
+  if (pool.length === 0) return null;
+  return pool[Math.floor(rng() * pool.length)];
+}
+
+const ALL: Card[] = [...LEGACY_ROBO_PETS, ...CARDS, ...Object.values(STREAK_CARDS), ...TROPHY_CARDS];
 
 export function cardById(id: string): Card | undefined {
   return ALL.find((c) => c.id === id);

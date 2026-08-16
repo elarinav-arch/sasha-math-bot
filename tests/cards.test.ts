@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { CARDS, STREAK_CARDS, cardById } from "../src/cards.js";
+import { CARDS, STREAK_CARDS, cardById, TROPHY_CARDS, pickTrophyCard } from "../src/cards.js";
 
 test("60 collection cards with unique ids", () => {
   expect(CARDS).toHaveLength(60);
@@ -39,4 +39,16 @@ test("cardById still resolves legacy robo-pet ids from before the cat-breed pivo
 
 test("new cat card ids never collide with legacy robo-pet ids (distinct prefix)", () => {
   for (const c of CARDS) expect(c.id).toMatch(/^cat\d+$/);
+});
+
+test("TROPHY_CARDS is a small, uniquely-identified pool distinct from CARDS and LEGACY ids", () => {
+  expect(TROPHY_CARDS.length).toBeGreaterThanOrEqual(8);
+  const ids = TROPHY_CARDS.map((c) => c.id);
+  expect(new Set(ids).size).toBe(ids.length);
+  for (const c of TROPHY_CARDS) expect(c.id).toMatch(/^trophy\d+$/);
+});
+
+test("pickTrophyCard never returns an already-owned trophy and returns null when all owned", () => {
+  expect(pickTrophyCard(TROPHY_CARDS.map((c) => c.id), () => 0)).toBeNull();
+  expect(pickTrophyCard(TROPHY_CARDS.slice(1).map((c) => c.id), () => 0)!.id).toBe(TROPHY_CARDS[0].id);
 });
