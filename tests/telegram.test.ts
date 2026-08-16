@@ -177,3 +177,38 @@ test("PolledIO.extendDeadline resets the deadline relative to now, not additive 
   expect(deadline).toBeGreaterThanOrEqual(before + 20 * 60_000 - 1000);
   expect(deadline).toBeLessThanOrEqual(before + 20 * 60_000 + 1000);
 });
+
+test("PolledIO.waitForReply returns null immediately if the deadline has already passed at call time, without asking the poller to wait", async () => {
+  const tg = fakeTelegram(async () => []);
+  const poller = new TelegramPoller(tg, 0);
+  const waitForSpy = vi.spyOn(poller, "waitFor");
+  const io = new PolledIO(poller, 42, Date.now() - 1000); // дедлайн уже в прошлом на момент создания
+  const result = await io.waitForReply(5000);
+  expect(result).toBeNull();
+  expect(waitForSpy).not.toHaveBeenCalled();
+});
+
+test("PolledIO.extendDeadline extends the window honored by a subsequent waitForReply", async () => {
+  vi.useFakeTimers();
+  let pending: Update[] = [];
+  const tg = fakeTelegram(async () => {
+    const batch = pending;
+    pending = [];
+    return batch;
+  });
+  const poller = new TelegramPoller(tg, 0);
+  const io = new PolledIO(poller, 42, Date.now() + 50); // исходный дедлайн истекает через 50мс
+
+  io.extendDeadline(5000); // продлеваем на 5с от текущего момента
+
+  const replyPromise = io.waitForReply(10_000);
+
+  // Ответ приходит через 200мс — уже позже ИСХОДНОГО дедлайна (50мс),
+  // но задолго до ПРОДЛЁННОГО (5000мс)
+  await vi.advanceTimersByTimeAsync(200);
+  pending = [upd(1, 42, "7", 1000)];
+  await poller.pollOnce(() => {});
+
+  expect(await replyPromise).toBe("7");
+  vi.useRealTimers();
+});
