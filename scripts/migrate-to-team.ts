@@ -6,13 +6,27 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { ChildProgress, TeamState } from "../src/state.js";
 
 const PATH = "progress.json";
-// Чат-айди реального ребёнка — секрет (репозиторий публичный), поэтому берём
-// из переменной окружения, как и везде в проекте; литерал ниже — только
-// запасной вариант, чтобы скрипт оставался однокомандным в обычном случае.
-const ALEXANDRA_CHAT_ID = Number(process.env.CHILD_CHAT_ID) || 7260953209;
-const ALEXANDRA_NAME = process.env.CHILD_NAME || "Александра";
+
+// Чат-айди и имя реального ребёнка — это PII, а репозиторий публичный, поэтому
+// оба берутся строго из переменных окружения, без литералов-заглушек в коде
+// (тот же подход, что и для CHILD_CHAT_ID в src/index.ts).
+export function resolveChildIdentity(
+  env: NodeJS.ProcessEnv = process.env,
+): { chatId: number; name: string } | null {
+  const chatId = Number(env.CHILD_CHAT_ID);
+  const name = env.CHILD_NAME;
+  if (!env.CHILD_CHAT_ID || !Number.isFinite(chatId) || !name) return null;
+  return { chatId, name };
+}
 
 function main(): void {
+  const identity = resolveChildIdentity();
+  if (!identity) {
+    console.error("CHILD_CHAT_ID и CHILD_NAME обязательны — задайте переменные окружения перед запуском.");
+    process.exit(1);
+  }
+  const { chatId, name } = identity;
+
   if (!existsSync(PATH)) {
     console.log("progress.json не найден — нечего мигрировать.");
     return;
@@ -23,8 +37,8 @@ function main(): void {
     return;
   }
   const child: ChildProgress = {
-    chatId: ALEXANDRA_CHAT_ID,
-    name: ALEXANDRA_NAME,
+    chatId,
+    name,
     joinedAt: new Date(0).toISOString(), // точная дата первой регистрации не сохранялась — историческая заглушка
     facts: old.facts ?? {},
     days: old.days ?? [],
@@ -33,16 +47,20 @@ function main(): void {
     totalStars: old.totalStars ?? 0,
   };
   const team: TeamState = {
-    children: { [ALEXANDRA_CHAT_ID]: child },
+    children: { [chatId]: child },
     weeklyGoal: { weekStart: "", trophyAwarded: false },
     trophyCards: [],
   };
   // Бэкап на всякий случай: скрипт запускается один раз против единственной
   // реальной записи прогресса ребёнка — если что-то пойдёт не так, .bak
-  // позволит откатиться вручную.
-  if (existsSync(PATH)) writeFileSync(PATH + ".bak", readFileSync(PATH));
+  // позволит откатиться вручную. (existsSync(PATH) уже проверен выше.)
+  writeFileSync(PATH + ".bak", readFileSync(PATH));
   writeFileSync(PATH, JSON.stringify(team, null, 2) + "\n", "utf8");
-  console.log("Миграция выполнена: Александра — первый ребёнок команды.");
+  console.log(`Миграция выполнена: ${name} — первый ребёнок команды.`);
 }
 
-main();
+// Запускаем main только при прямом старте (не при импорте из тестов) — тот же
+// приём, что и в src/index.ts.
+if (process.argv[1] && process.argv[1].endsWith("migrate-to-team.ts")) {
+  main();
+}
