@@ -1,4 +1,4 @@
-import { CARDS, STREAK_CARDS, TROPHY_CARDS, cardById, pickTrophyCard, type Card } from "./cards.js";
+import { CARDS, STREAK_CARDS, cardById, pickTrophyCard, type Card } from "./cards.js";
 import { addCardWon, getDay, type ChildProgress, type DayRecord, type TeamState } from "./state.js";
 import { isInWeek } from "./calendar.js";
 

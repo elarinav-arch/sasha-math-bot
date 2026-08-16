@@ -141,7 +141,8 @@ export const TROPHY_CARDS: Card[] = [
 export function pickTrophyCard(ownedTrophyIds: string[], rng: () => number = Math.random): Card | null {
   const pool = TROPHY_CARDS.filter((c) => !ownedTrophyIds.includes(c.id));
   if (pool.length === 0) return null;
-  return pool[Math.floor(rng() * pool.length)];
+  const idx = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
+  return pool[idx];
 }
 
 const ALL: Card[] = [...LEGACY_ROBO_PETS, ...CARDS, ...Object.values(STREAK_CARDS), ...TROPHY_CARDS];

@@ -52,3 +52,12 @@ test("pickTrophyCard never returns an already-owned trophy and returns null when
   expect(pickTrophyCard(TROPHY_CARDS.map((c) => c.id), () => 0)).toBeNull();
   expect(pickTrophyCard(TROPHY_CARDS.slice(1).map((c) => c.id), () => 0)!.id).toBe(TROPHY_CARDS[0].id);
 });
+
+test("pickTrophyCard clamps the top edge: an rng of exactly 1 must not index past the pool", () => {
+  // rng() * pool.length can legally equal pool.length when rng() returns 1 —
+  // без клампа Math.floor(1 * pool.length) === pool.length, что даёт undefined
+  // вместо объявленного Card | null.
+  const card = pickTrophyCard([], () => 1);
+  expect(card).not.toBeUndefined();
+  expect(card).toEqual(TROPHY_CARDS[TROPHY_CARDS.length - 1]);
+});
