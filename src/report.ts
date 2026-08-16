@@ -1,6 +1,6 @@
-import type { Progress } from "./state.js";
+import type { ChildProgress } from "./state.js";
 
-export function parentReport(p: Progress, date: string): string {
+export function parentReport(p: ChildProgress, date: string): string {
   const day = p.days.find((d) => d.date === date);
   const weak = Object.entries(p.facts)
     .filter(([, f]) => f.wrong > 0 && f.level <= 1)

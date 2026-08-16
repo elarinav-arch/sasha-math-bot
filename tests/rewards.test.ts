@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { emptyProgress, getDay, cardsWonToday } from "../src/state.js";
+import { emptyChildProgress, getDay, cardsWonToday } from "../src/state.js";
 import { CARDS, STREAK_CARDS, cardById } from "../src/cards.js";
 import {
   starsForSession, recordSession, cardChance, rollSessionCard, awardBonusCard,
@@ -21,7 +21,7 @@ test("stars: >=90% -> 3, >=70% -> 2, else 1, empty session -> 0", () => {
 });
 
 test("recordSession accumulates day stars and total", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   recordSession(p, "2026-07-05", 3);
   recordSession(p, "2026-07-05", 2);
   const day = getDay(p, "2026-07-05");
@@ -38,7 +38,7 @@ test("cardChance: 3 stars guaranteed, 2 stars 50/50, 1 star (or fewer) never", (
 });
 
 test("rollSessionCard: 3 stars always wins a card and records it for the day", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   const card = rollSessionCard(p, "2026-07-05", 3, () => 0.99);
   expect(card).not.toBeNull();
   expect(p.cards).toContain(card!.id);
@@ -46,31 +46,31 @@ test("rollSessionCard: 3 stars always wins a card and records it for the day", (
 });
 
 test("rollSessionCard: 1 star never wins, regardless of rng", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   expect(rollSessionCard(p, "2026-07-05", 1, () => 0)).toBeNull();
   expect(cardsWonToday(getDay(p, "2026-07-05"))).toEqual([]);
 });
 
 test("rollSessionCard: 2 stars wins below the 50% threshold, loses at/above it", () => {
-  const p1 = emptyProgress();
+  const p1 = emptyChildProgress();
   expect(rollSessionCard(p1, "2026-07-05", 2, () => 0.3)).not.toBeNull();
-  const p2 = emptyProgress();
+  const p2 = emptyChildProgress();
   expect(rollSessionCard(p2, "2026-07-05", 2, () => 0.7)).toBeNull();
 });
 
 test("rollSessionCard: 2 stars at the exact 50% boundary loses (>= is a loss, not a win)", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   expect(rollSessionCard(p, "2026-07-05", 2, () => 0.5)).toBeNull();
 });
 
 test("rollSessionCard returns null once the whole collection is already owned", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   p.cards = CARDS.map((c) => c.id);
   expect(rollSessionCard(p, "2026-07-05", 3, () => 0)).toBeNull();
 });
 
 test("rollSessionCard draws independent rng values for the win-gate, the tier and the in-tier index", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   // gate: 0.4 < cardChance(3)=1 -> win (уже само по себе требует ОТДЕЛЬНОГО первого вызова).
   // tier: 0.56 -> "rare" (55 <= 56 < 85). index: 0.99 -> последняя карта в пуле редких.
   // Если бы шанс и выбор карты по ошибке использовали одно и то же значение rng(),
@@ -80,7 +80,7 @@ test("rollSessionCard draws independent rng values for the win-gate, the tier an
 });
 
 test("awardBonusCard always draws a card regardless of rng (no chance gate)", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   const card = awardBonusCard(p, "2026-07-05", () => 0.999);
   expect(card).not.toBeNull();
   expect(p.cards).toContain(card!.id);
@@ -88,19 +88,19 @@ test("awardBonusCard always draws a card regardless of rng (no chance gate)", ()
 });
 
 test("awardBonusCard draws independent rng values for the tier and the in-tier index", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   const card = awardBonusCard(p, "2026-07-05", sequence(0.56, 0.99));
   expect(card?.rarity).toBe("rare");
 });
 
 test("awardBonusCard returns null once the whole collection is already owned", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   p.cards = CARDS.map((c) => c.id);
   expect(awardBonusCard(p, "2026-07-05")).toBeNull();
 });
 
 test("dayParticipated: true via 2+ sessions, OR via a completed bonus round even with fewer sessions", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   const day = getDay(p, "2026-07-05");
   day.sessions = 1;
   expect(dayParticipated(day)).toBe(false);
@@ -112,7 +112,7 @@ test("dayParticipated: true via 2+ sessions, OR via a completed bonus round even
 });
 
 test("finishDay grows the streak on participation and resets it on a miss", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   recordSession(p, "2026-07-05", 1);
   recordSession(p, "2026-07-05", 1);
   const { streakCard } = finishDay(p, "2026-07-05");
@@ -125,7 +125,7 @@ test("finishDay grows the streak on participation and resets it on a miss", () =
 });
 
 test("finishDay preserves the streak on a bonus-round-only day (fewer than 2 regular sessions)", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   p.streak = 5;
   recordSession(p, "2026-07-05", 1); // только бонусный раунд — 1 сессия за весь день
   const day = getDay(p, "2026-07-05");
@@ -135,7 +135,7 @@ test("finishDay preserves the streak on a bonus-round-only day (fewer than 2 reg
 });
 
 test("streak card awarded at 3 days regardless of session-level cards", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   for (const date of ["2026-07-05", "2026-07-06", "2026-07-07"]) {
     recordSession(p, date, 1);
     recordSession(p, date, 1);
@@ -146,7 +146,7 @@ test("streak card awarded at 3 days regardless of session-level cards", () => {
 });
 
 test("pickNewCard never returns an owned card and returns null when all owned", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   p.cards = CARDS.map((c) => c.id);
   expect(pickNewCard(p, () => 0)).toBeNull();
   p.cards = CARDS.slice(1).map((c) => c.id);
@@ -154,28 +154,28 @@ test("pickNewCard never returns an owned card and returns null when all owned", 
 });
 
 test("pickNewCard picks by rarity TIER (55/30/15), independent of how many cards are in each tier", () => {
-  const p = emptyProgress(); // весь набор не собран: 33 обычных, 18 редких, 9 легендарных
+  const p = emptyChildProgress(); // весь набор не собран: 33 обычных, 18 редких, 9 легендарных
   expect(pickNewCard(p, sequence(0.54, 0))!.rarity).toBe("common"); // 54 < 55
   expect(pickNewCard(p, sequence(0.56, 0))!.rarity).toBe("rare"); // 55 <= 56 < 85
   expect(pickNewCard(p, sequence(0.86, 0))!.rarity).toBe("legendary"); // 86 >= 85
 });
 
 test("pickNewCard's legendary tier odds don't shrink just because few legendary cards remain unowned", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   p.cards = CARDS.filter((c) => c.rarity !== "legendary").map((c) => c.id); // остались только легендарки
   expect(pickNewCard(p, sequence(0.01, 0))!.rarity).toBe("legendary");
   expect(pickNewCard(p, sequence(0.99, 0))!.rarity).toBe("legendary");
 });
 
 test("pickNewCard falls back to remaining tiers once a tier is fully collected", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   p.cards = CARDS.filter((c) => c.rarity === "legendary").map((c) => c.id); // легендарки уже все собраны
   const card = pickNewCard(p, sequence(0.99, 0)); // rng, который иначе попал бы в легендарную долю
   expect(card?.rarity).not.toBe("legendary");
 });
 
 test("pickNewCard picks a specific card within the chosen tier via the second rng draw", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   const first = pickNewCard(p, sequence(0.9, 0)); // легендарный уровень, первая карта
   const last = pickNewCard(p, sequence(0.9, 0.99)); // тот же уровень, последняя карта
   expect(first?.rarity).toBe("legendary");
@@ -184,7 +184,7 @@ test("pickNewCard picks a specific card within the chosen tier via the second rn
 });
 
 test("collectionSummary lists owned new-season cards and reports a fraction scoped to that season only", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   p.cards = [CARDS[0].id];
   p.totalStars = 7;
   const text = collectionSummary(p);
@@ -195,7 +195,7 @@ test("collectionSummary lists owned new-season cards and reports a fraction scop
 });
 
 test("collectionSummary shows legacy robo-pet cards separately, without inflating the new-season fraction", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   p.cards = ["c02"]; // легаси-карточка робо-питомца ("Дрон-щенок Пиксель"), сезон 2 ещё не начат
   const text = collectionSummary(p);
   const totalActive = CARDS.length + Object.keys(STREAK_CARDS).length;
@@ -204,7 +204,7 @@ test("collectionSummary shows legacy robo-pet cards separately, without inflatin
 });
 
 test("collectionSummary never shows an impossible over-100% fraction even with legacy + a full new collection", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   p.cards = ["c02", ...CARDS.map((c) => c.id), ...Object.values(STREAK_CARDS).map((c) => c.id)];
   const text = collectionSummary(p);
   const totalActive = CARDS.length + Object.keys(STREAK_CARDS).length;

@@ -1,12 +1,12 @@
 import { expect, test } from "vitest";
-import { emptyProgress } from "../src/state.js";
+import { emptyChildProgress } from "../src/state.js";
 import { allFacts } from "../src/facts.js";
 import { applyResult, isDue, pickSessionFacts } from "../src/leitner.js";
 
 const NOW = new Date("2026-07-05T10:00:00Z");
 
 test("correct answer raises level (max 4), wrong lowers it (min 0)", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   applyResult(p, "7x8", true, NOW);
   expect(p.facts["7x8"].level).toBe(1);
   applyResult(p, "7x8", false, NOW);
@@ -26,7 +26,7 @@ test("isDue: unseen facts are due; level 2 is due after 3 days, not after 1", ()
 });
 
 test("pickSessionFacts returns requested count, weak facts included", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   const facts = allFacts();
   // "западающий" факт: уровень 0, много ошибок, показан давно
   p.facts["7x8"] = { level: 0, lastSeen: "2026-06-01T10:00:00Z", correct: 0, wrong: 5 };

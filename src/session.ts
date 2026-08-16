@@ -1,5 +1,5 @@
 import type { Fact } from "./facts.js";
-import type { Progress } from "./state.js";
+import type { ChildProgress } from "./state.js";
 import { applyResult } from "./leitner.js";
 import { collectionSummary } from "./rewards.js";
 import { COMBO, GREETINGS, PRAISE, SECOND_TRY, WRONG, pick } from "./phrases.js";
@@ -30,7 +30,7 @@ type Answer =
 
 export async function runSession(
   io: SessionIO,
-  progress: Progress,
+  progress: ChildProgress,
   facts: Fact[],
   now: () => Date = () => new Date(),
   rng: () => number = Math.random,
@@ -92,7 +92,7 @@ export async function runSession(
 
 async function ask(
   io: SessionIO,
-  progress: Progress,
+  progress: ChildProgress,
   f: Fact,
   rng: () => number,
   timeoutMs: number,

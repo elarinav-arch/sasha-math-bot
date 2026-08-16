@@ -1,10 +1,10 @@
 import { expect, test } from "vitest";
-import { emptyProgress } from "../src/state.js";
+import { emptyChildProgress } from "../src/state.js";
 import { recordSession } from "../src/rewards.js";
 import { parentReport } from "../src/report.js";
 
 test("report shows sessions, stars, streak and weak facts", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   recordSession(p, "2026-07-05", 3);
   recordSession(p, "2026-07-05", 2);
   p.streak = 4;
@@ -18,6 +18,6 @@ test("report shows sessions, stars, streak and weak facts", () => {
 });
 
 test("report without weak facts says so", () => {
-  const p = emptyProgress();
+  const p = emptyChildProgress();
   expect(parentReport(p, "2026-07-05")).toContain("Слабых мест не замечено");
 });

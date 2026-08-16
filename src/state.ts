@@ -16,7 +16,11 @@ export interface DayRecord {
   bonusRoundDone?: boolean; // прошла бонусный раунд — гарантирует карточку, если за день не выпало ни одной
 }
 
-export interface Progress {
+// Прогресс ОДНОГО ребёнка (было — весь progress.json; теперь один из многих в TeamState).
+export interface ChildProgress {
+  chatId: number;
+  name: string; // Telegram first_name на момент /join
+  joinedAt: string; // ISO-дата регистрации
   facts: Record<string, FactProgress>;
   days: DayRecord[];
   streak: number;
@@ -24,24 +28,40 @@ export interface Progress {
   totalStars: number;
 }
 
-export function emptyProgress(): Progress {
-  return { facts: {}, days: [], streak: 0, cards: [], totalStars: 0 };
+export interface WeeklyGoal {
+  weekStart: string; // YYYY-MM-DD понедельника текущей недели ("" — ещё не инициализирована)
+  trophyAwarded: boolean;
 }
 
-export function loadProgress(path: string): Progress {
-  if (!existsSync(path)) return emptyProgress();
-  return JSON.parse(readFileSync(path, "utf8")) as Progress;
+export interface TeamState {
+  children: Record<number, ChildProgress>; // ключ — chatId
+  weeklyGoal: WeeklyGoal;
+  trophyCards: string[]; // id полученных командой трофейных карточек (кумулятивно)
+  lastEveningWrapUp?: string; // дата (YYYY-MM-DD), когда последний раз отправляли итоги недели/дня — дедуп
 }
 
-export function saveProgress(path: string, p: Progress): void {
-  writeFileSync(path, JSON.stringify(p, null, 2) + "\n", "utf8");
+export function emptyChildProgress(chatId = 0, name = "", joinedAt = ""): ChildProgress {
+  return { chatId, name, joinedAt, facts: {}, days: [], streak: 0, cards: [], totalStars: 0 };
 }
 
-export function getDay(p: Progress, date: string): DayRecord {
-  let day = p.days.find((d) => d.date === date);
+export function emptyTeamState(): TeamState {
+  return { children: {}, weeklyGoal: { weekStart: "", trophyAwarded: false }, trophyCards: [] };
+}
+
+export function loadTeamState(path: string): TeamState {
+  if (!existsSync(path)) return emptyTeamState();
+  return JSON.parse(readFileSync(path, "utf8")) as TeamState;
+}
+
+export function saveTeamState(path: string, team: TeamState): void {
+  writeFileSync(path, JSON.stringify(team, null, 2) + "\n", "utf8");
+}
+
+export function getDay(child: ChildProgress, date: string): DayRecord {
+  let day = child.days.find((d) => d.date === date);
   if (!day) {
     day = { date, sessions: 0, stars: 0 };
-    p.days.push(day);
+    child.days.push(day);
   }
   return day;
 }

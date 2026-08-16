@@ -1,10 +1,10 @@
 import type { Fact } from "./facts.js";
-import type { FactProgress, Progress } from "./state.js";
+import type { ChildProgress, FactProgress } from "./state.js";
 
 // Интервалы повторения по уровням (дней)
 const INTERVAL_DAYS = [0, 1, 3, 7, 14];
 
-export function applyResult(p: Progress, key: string, correct: boolean, now: Date): void {
+export function applyResult(p: ChildProgress, key: string, correct: boolean, now: Date): void {
   let fp = p.facts[key];
   if (!fp) {
     fp = { level: 0, lastSeen: null, correct: 0, wrong: 0 };
@@ -28,7 +28,7 @@ export function isDue(fp: FactProgress | undefined, now: Date): boolean {
 
 // ~70% самых слабых из "созревших" + добор случайными для разнообразия
 export function pickSessionFacts(
-  p: Progress,
+  p: ChildProgress,
   all: Fact[],
   count: number,
   now: Date,

@@ -1,5 +1,5 @@
 import { CARDS, STREAK_CARDS, cardById, type Card } from "./cards.js";
-import { addCardWon, getDay, type DayRecord, type Progress } from "./state.js";
+import { addCardWon, getDay, type ChildProgress, type DayRecord } from "./state.js";
 
 export function starsForSession(correct: number, total: number): number {
   if (total === 0) return 0;
@@ -9,7 +9,7 @@ export function starsForSession(correct: number, total: number): number {
   return 1;
 }
 
-export function recordSession(p: Progress, date: string, stars: number): DayRecord {
+export function recordSession(p: ChildProgress, date: string, stars: number): DayRecord {
   const day = getDay(p, date);
   day.sessions += 1;
   day.stars += stars;
@@ -30,7 +30,7 @@ export function cardChance(stars: number): number {
 // вероятность уровня не зависит от того, сколько карт в нём осталось несобранными.
 const RARITY_WEIGHT: Record<Card["rarity"], number> = { common: 55, rare: 30, legendary: 15 };
 
-export function pickNewCard(p: Progress, rng: () => number = Math.random): Card | null {
+export function pickNewCard(p: ChildProgress, rng: () => number = Math.random): Card | null {
   const pool = CARDS.filter((c) => !p.cards.includes(c.id));
   if (pool.length === 0) return null;
 
@@ -56,7 +56,7 @@ export function pickNewCard(p: Progress, rng: () => number = Math.random): Card 
 
 // Пытается выдать карточку сразу по итогам сессии (шанс зависит от звёзд).
 export function rollSessionCard(
-  p: Progress,
+  p: ChildProgress,
   date: string,
   stars: number,
   rng: () => number = Math.random,
@@ -70,7 +70,7 @@ export function rollSessionCard(
 }
 
 // Гарантированная карточка (без шанса) — награда за прохождение бонусного раунда.
-export function awardBonusCard(p: Progress, date: string, rng: () => number = Math.random): Card | null {
+export function awardBonusCard(p: ChildProgress, date: string, rng: () => number = Math.random): Card | null {
   const card = pickNewCard(p, rng);
   if (!card) return null;
   addCardWon(getDay(p, date), card.id);
@@ -86,7 +86,7 @@ export function dayParticipated(day: DayRecord): boolean {
 
 // Вызывается в вечернем запуске; отвечает только за серию дней и её награды —
 // обычные карточки коллекции теперь выдаются per-session через rollSessionCard/awardBonusCard.
-export function finishDay(p: Progress, date: string): { streakCard: Card | null } {
+export function finishDay(p: ChildProgress, date: string): { streakCard: Card | null } {
   const day = getDay(p, date);
   if (!dayParticipated(day)) {
     p.streak = 0;
@@ -106,7 +106,7 @@ export function finishDay(p: Progress, date: string): { streakCard: Card | null 
 // иначе легаси-карточки прошлого сезона искажали бы прогресс — например, показывали бы
 // "1 из 64" при нуле собранных котов, или даже "70 из 64" при полностью собранной новой
 // коллекции вместе со старыми карточками (числитель превысил бы знаменатель).
-export function collectionSummary(p: Progress): string {
+export function collectionSummary(p: ChildProgress): string {
   const activeIds = new Set([...CARDS, ...Object.values(STREAK_CARDS)].map((c) => c.id));
   const ownedActive = p.cards
     .filter((id) => activeIds.has(id))
