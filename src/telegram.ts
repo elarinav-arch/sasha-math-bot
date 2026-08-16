@@ -1,11 +1,16 @@
 import { readFileSync } from "node:fs";
-import type { SessionIO } from "./session.js";
 
 const API = "https://api.telegram.org";
 
 export interface Update {
   update_id: number;
-  message?: { message_id: number; date: number; text?: string; chat: { id: number } };
+  message?: {
+    message_id: number;
+    date: number;
+    text?: string;
+    chat: { id: number };
+    from?: { first_name?: string };
+  };
 }
 
 export class Telegram {
@@ -41,55 +46,30 @@ export class Telegram {
   }
 }
 
-// Чистая функция: первое подходящее текстовое сообщение из пачки updates
-export function nextReply(
-  updates: Update[],
-  chatId: number,
-  notBeforeMs: number,
-): { text: string | null; offset: number } {
-  let offset = 0;
-  let text: string | null = null;
-  for (const u of updates) {
-    offset = Math.max(offset, u.update_id + 1);
-    if (text !== null) continue;
-    const m = u.message;
-    if (!m || m.chat.id !== chatId || !m.text) continue;
-    if (m.date * 1000 < notBeforeMs) continue; // старое сообщение из очереди вне окна
-    text = m.text;
-  }
-  return { text, offset };
+export interface DeliveredMessage {
+  chatId: number;
+  text: string;
+  fromName: string;
 }
 
-export class TelegramIO implements SessionIO {
-  private offset = 0;
-
-  constructor(
-    private tg: Telegram,
-    private chatId: number,
-    private startedAtMs: number,
-    private deadlineMs: number,
-  ) {}
-
-  async send(text: string): Promise<void> {
-    await this.tg.sendMessage(this.chatId, text);
+// Чистая функция: маршрутизирует пачку updates по разным чатам одновременно —
+// не только один конкретный chatId, как раньше в nextReply, а сразу все.
+// В пределах одной пачки от одного чата доставляется только первое сообщение
+// (та же семантика, что была у nextReply — офсет всё равно продвигается за всю пачку).
+export function dispatchUpdates(
+  updates: Update[],
+  notBeforeMs: number,
+): { offset: number; delivered: DeliveredMessage[] } {
+  let offset = 0;
+  const seen = new Set<number>();
+  const delivered: DeliveredMessage[] = [];
+  for (const u of updates) {
+    offset = Math.max(offset, u.update_id + 1);
+    const m = u.message;
+    if (!m?.text || seen.has(m.chat.id)) continue;
+    if (m.date * 1000 < notBeforeMs) continue; // старое сообщение из очереди вне окна
+    seen.add(m.chat.id);
+    delivered.push({ chatId: m.chat.id, text: m.text, fromName: m.from?.first_name ?? "друг" });
   }
-
-  // Продлевает окно ожидания ответов (например, для бонусного раунда после основной сессии).
-  // Отсчёт — от текущего момента, а не от старого дедлайна: иначе итоговое окно
-  // зависело бы от того, сколько времени уже прошло с начала исходной сессии.
-  extendDeadline(extraMs: number): void {
-    this.deadlineMs = Date.now() + extraMs;
-  }
-
-  async waitForReply(timeoutMs: number): Promise<string | null> {
-    const until = Math.min(Date.now() + timeoutMs, this.deadlineMs);
-    while (Date.now() < until) {
-      const sec = Math.max(1, Math.min(50, Math.ceil((until - Date.now()) / 1000)));
-      const updates = await this.tg.getUpdates(this.offset, sec);
-      const r = nextReply(updates, this.chatId, this.startedAtMs - 60_000);
-      if (r.offset > this.offset) this.offset = r.offset;
-      if (r.text !== null) return r.text;
-    }
-    return null;
-  }
+  return { offset, delivered };
 }
