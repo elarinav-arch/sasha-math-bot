@@ -73,3 +73,60 @@ export function dispatchUpdates(
   }
   return { offset, delivered };
 }
+
+// Единственный объект за весь запуск джобы, который реально вызывает getUpdates.
+// Telegram даёт long-polling offset НА ВЕСЬ БОТ, а не на пользователя — если бы
+// каждая детская сессия сама опрашивала Telegram, они бы путали друг другу offset.
+// Вместо этого сессии регистрируют ожидание через waitFor(chatId, ...), а поллер
+// раздаёт пришедшие сообщения нужным ожидающим (см. PolledIO — тонкая обёртка
+// вокруг этого класса, реализующая интерфейс SessionIO для одного ребёнка).
+export class TelegramPoller {
+  private offset = 0;
+  private waiters = new Map<number, (text: string) => void>();
+  private stopped = false;
+
+  constructor(
+    private tg: Telegram,
+    private startedAtMs: number = Date.now(),
+  ) {}
+
+  async pollOnce(onUnmatched: (msg: DeliveredMessage) => void): Promise<void> {
+    const updates = await this.tg.getUpdates(this.offset, 20);
+    const { offset, delivered } = dispatchUpdates(updates, this.startedAtMs - 60_000);
+    if (offset > this.offset) this.offset = offset;
+    for (const msg of delivered) {
+      const resolve = this.waiters.get(msg.chatId);
+      if (resolve) {
+        this.waiters.delete(msg.chatId);
+        resolve(msg.text);
+      } else {
+        onUnmatched(msg);
+      }
+    }
+  }
+
+  async run(onUnmatched: (msg: DeliveredMessage) => void): Promise<void> {
+    while (!this.stopped) await this.pollOnce(onUnmatched);
+  }
+
+  stop(): void {
+    this.stopped = true;
+  }
+
+  waitFor(chatId: number, timeoutMs: number): Promise<string | null> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.waiters.delete(chatId);
+        resolve(null);
+      }, timeoutMs);
+      this.waiters.set(chatId, (text) => {
+        clearTimeout(timer);
+        resolve(text);
+      });
+    });
+  }
+
+  send(chatId: number, text: string): Promise<void> {
+    return this.tg.sendMessage(chatId, text);
+  }
+}
