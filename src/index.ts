@@ -160,6 +160,60 @@ async function handleUnmatched(team: TeamState, inviteCode: string, tg: Telegram
   // "wrong-code" — молчим: не подсказываем постороннему, что не так.
 }
 
+// Изолирует handleUnmatched: он вызывается синхронно, фоново, из поллера
+// (onUnmatched не await-ится внутри pollOnce), поэтому падение (например,
+// sendMessage отклонённому/заблокированному боту) без собственного .catch
+// становится unhandled rejection и роняет весь процесс — та же природа бага,
+// что уже была исправлена в runPoller/runChildSlotSafely.
+export function handleUnmatchedSafely(
+  team: TeamState,
+  inviteCode: string,
+  tg: Telegram,
+  msg: DeliveredMessage,
+): Promise<void> {
+  return handleUnmatched(team, inviteCode, tg, msg).catch((err) => {
+    console.error(`handleUnmatched failed for chatId ${msg.chatId}:`, err);
+  });
+}
+
+// Итоги вечера воскресенья (трофей/утешение) и отчёт родителю. Каждая отправка
+// изолирована собственным .catch: одно неотвечающее/заблокированное чат-окно
+// (ребёнок или родитель) не должно прерывать рассылку остальным и не должно
+// пробрасывать исключение наружу — иначе main() упадёт до poller.stop()/
+// saveTeamState() и потеряет прогресс ВСЕХ детей за этот запуск, а не только
+// того, чья отправка не удалась. Та же причина бага, что и в runChildSlotSafely.
+export async function runEveningWrapUp(
+  tg: Telegram,
+  team: TeamState,
+  date: string,
+  weekStart: string,
+  isSunday: boolean,
+  parentChatId: number | null,
+): Promise<void> {
+  if (isSunday) {
+    const { goalMet, trophyCard } = finishWeek(team, weekStart);
+    const allChildren = Object.values(team.children);
+    if (goalMet && trophyCard) {
+      for (const child of allChildren) {
+        await announceCard(tg, child.chatId, trophyCard, "🏆 Команда справилась на этой неделе!").catch((err) => {
+          console.error(`Trophy announcement failed for chatId ${child.chatId}:`, err);
+        });
+      }
+    } else if (!goalMet && allChildren.length > 0) {
+      for (const child of allChildren) {
+        await tg.sendMessage(child.chatId, "Почти-почти! На следующей неделе команда точно справится 💪").catch((err) => {
+          console.error(`Consolation message failed for chatId ${child.chatId}:`, err);
+        });
+      }
+    }
+  }
+  if (parentChatId) {
+    await tg.sendMessage(parentChatId, teamReport(team, date, weekStart)).catch((err) => {
+      console.error("Team report send to parent failed:", err);
+    });
+  }
+}
+
 async function main(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const inviteCode = process.env.TEAM_INVITE_CODE;
@@ -183,7 +237,7 @@ async function main(): Promise<void> {
   const tg = new Telegram(token);
   const poller = new TelegramPoller(tg);
   const pollerDone = runPoller(poller, (msg) => {
-    void handleUnmatched(team, inviteCode, tg, msg);
+    void handleUnmatchedSafely(team, inviteCode, tg, msg);
   });
 
   const dueChildren = Object.values(team.children).filter((child) => {
@@ -199,20 +253,7 @@ async function main(): Promise<void> {
     team.lastEveningWrapUp = date;
     const weekStart = weekStartFor(date);
     const isSunday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Nicosia", weekday: "short" }).format(new Date()) === "Sun";
-    if (isSunday) {
-      const { goalMet, trophyCard } = finishWeek(team, weekStart);
-      const allChildren = Object.values(team.children);
-      if (goalMet && trophyCard) {
-        for (const child of allChildren) {
-          await announceCard(tg, child.chatId, trophyCard, "🏆 Команда справилась на этой неделе!");
-        }
-      } else if (!goalMet && allChildren.length > 0) {
-        for (const child of allChildren) {
-          await tg.sendMessage(child.chatId, "Почти-почти! На следующей неделе команда точно справится 💪");
-        }
-      }
-    }
-    if (parentChatId) await tg.sendMessage(parentChatId, teamReport(team, date, weekStart));
+    await runEveningWrapUp(tg, team, date, weekStart, isSunday, parentChatId);
   }
 
   poller.stop();

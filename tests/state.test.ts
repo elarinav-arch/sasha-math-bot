@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -22,6 +22,24 @@ test("emptyChildProgress accepts an explicit identity", () => {
 test("loadTeamState returns empty team state when file is missing", () => {
   const p = loadTeamState(join(mkdtempSync(join(tmpdir(), "smb-")), "progress.json"));
   expect(p).toEqual(emptyTeamState());
+});
+
+// Fix 3: the real production progress.json (not yet migrated at the time this branch
+// merges) is still in the OLD flat single-child shape — no `children` property. Without
+// a check, loadTeamState would silently hand back a malformed object and the crash would
+// happen three calls downstream with an opaque message. It must fail fast and clearly here.
+test("loadTeamState throws a clear, actionable error on old single-child-shape data", () => {
+  const path = join(mkdtempSync(join(tmpdir(), "smb-")), "progress.json");
+  const oldShape = {
+    facts: { "7x8": { level: 2, lastSeen: null, correct: 0, wrong: 0 } },
+    days: [],
+    streak: 0,
+    cards: [],
+    totalStars: 0,
+  };
+  writeFileSync(path, JSON.stringify(oldShape), "utf8");
+
+  expect(() => loadTeamState(path)).toThrow(/migrate-to-team/);
 });
 
 test("saveTeamState then loadTeamState round-trips", () => {

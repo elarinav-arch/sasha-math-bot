@@ -1,7 +1,9 @@
 import { expect, test, vi } from "vitest";
-import { activeSlot, runChildSlot, runChildSlotSafely, runPoller } from "../src/index.js";
-import { TelegramPoller, type Telegram } from "../src/telegram.js";
-import { emptyChildProgress, getDay } from "../src/state.js";
+import {
+  activeSlot, handleUnmatchedSafely, runChildSlot, runChildSlotSafely, runEveningWrapUp, runPoller,
+} from "../src/index.js";
+import { TelegramPoller, type DeliveredMessage, type Telegram } from "../src/telegram.js";
+import { emptyChildProgress, emptyTeamState, getDay } from "../src/state.js";
 
 test("activeSlot covers contiguous windows with no gaps between them", () => {
   expect(activeSlot(new Date("2026-07-05T11:00:00Z"))).toBe("morning"); // 14:00 Кипр
@@ -44,6 +46,31 @@ test("runPoller absorbs a TelegramPoller.run() rejection instead of leaving it t
   await expect(pollerDone).resolves.toBeUndefined();
   expect(consoleErrorSpy).toHaveBeenCalledWith(
     "TelegramPoller stopped unexpectedly (no more message delivery — replies or joins — for the rest of this run):",
+    expect.any(Error),
+  );
+
+  consoleErrorSpy.mockRestore();
+});
+
+// Fix 1 (recurring): handleUnmatchedSafely wraps the same fire-and-forget dispatch main()
+// hands to runPoller's onUnmatched callback with its own .catch, so a failure inside
+// handleUnmatched (e.g. tg.sendMessage rejecting for a blocked/stale chat) can't become an
+// unhandled rejection and crash the whole process mid-run. Calls the real helper main() uses.
+test("handleUnmatchedSafely absorbs a handleUnmatched rejection instead of leaving it to reject", async () => {
+  const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const tg = fakeTelegram({
+    sendMessage: async () => {
+      throw new Error("Forbidden: bot was blocked by the user");
+    },
+  });
+  const team = emptyTeamState();
+  const msg: DeliveredMessage = { chatId: 555, text: "/join SASHA2026", fromName: "Тест" };
+
+  const result = handleUnmatchedSafely(team, "SASHA2026", tg, msg);
+
+  await expect(result).resolves.toBeUndefined();
+  expect(consoleErrorSpy).toHaveBeenCalledWith(
+    "handleUnmatched failed for chatId 555:",
     expect.any(Error),
   );
 
@@ -112,4 +139,55 @@ test("runChildSlot's evening branch announces a streak-card win via announceCard
   const announced = sent.find((m) => (m.text ?? m.caption ?? "").includes("Серия 3 дней"));
   expect(announced).toBeDefined();
   expect(announced?.chatId).toBe(333);
+});
+
+// Fix 2 (recurring): the Sunday evening trophy/consolation loop and the parent-report send
+// had no per-send error isolation, so one child's failed send (stale/blocked chat) would
+// throw out of main() before poller.stop()/saveTeamState() ran — discarding the WHOLE run's
+// progress for every child, not just the one whose send failed. Each send must be isolated
+// so the loop reaches every remaining child. Calls the real helper main() calls.
+test("runEveningWrapUp isolates one child's send failure so the loop reaches the next child", async () => {
+  const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const sentTo: (number | string)[] = [];
+  const tg = fakeTelegram({
+    sendMessage: async (chatId: number | string) => {
+      if (chatId === 111) throw new Error("Forbidden: bot was blocked by the user");
+      sentTo.push(chatId);
+    },
+  });
+  const team = emptyTeamState();
+  team.children[111] = emptyChildProgress(111, "A", "2026-01-01");
+  team.children[222] = emptyChildProgress(222, "B", "2026-01-01");
+  // Neither child has any day records, so finishWeek() reports goalMet === false and
+  // both children fall into the consolation-message loop (the branch under test).
+
+  await runEveningWrapUp(tg, team, "2026-08-16", "2026-08-10", true, null);
+
+  expect(consoleErrorSpy).toHaveBeenCalledWith(
+    "Consolation message failed for chatId 111:",
+    expect.any(Error),
+  );
+  expect(sentTo).toContain(222); // sibling B still got the message despite A's send failing
+
+  consoleErrorSpy.mockRestore();
+});
+
+// Same failure class as above, but for the parent team-report send specifically: it must
+// not throw out of runEveningWrapUp (which would still abort main() before saveTeamState()).
+test("runEveningWrapUp isolates a failed parent report send instead of throwing", async () => {
+  const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const tg = fakeTelegram({
+    sendMessage: async () => {
+      throw new Error("Forbidden: bot was blocked by the user");
+    },
+  });
+  const team = emptyTeamState();
+
+  await expect(
+    runEveningWrapUp(tg, team, "2026-08-16", "2026-08-10", false, 999),
+  ).resolves.toBeUndefined();
+
+  expect(consoleErrorSpy).toHaveBeenCalledWith("Team report send to parent failed:", expect.any(Error));
+
+  consoleErrorSpy.mockRestore();
 });

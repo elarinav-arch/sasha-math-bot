@@ -50,7 +50,16 @@ export function emptyTeamState(): TeamState {
 
 export function loadTeamState(path: string): TeamState {
   if (!existsSync(path)) return emptyTeamState();
-  return JSON.parse(readFileSync(path, "utf8")) as TeamState;
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  // Отличаем ещё не мигрированный старый плоский progress.json (прогресс одного
+  // ребёнка, без обёртки children) от новой формы TeamState — та же проверка,
+  // что уже используется в scripts/migrate-to-team.ts для обратного случая.
+  if (!parsed.children) {
+    throw new Error(
+      "progress.json is still in the old single-child format — run scripts/migrate-to-team.ts before deploying",
+    );
+  }
+  return parsed as unknown as TeamState;
 }
 
 export function saveTeamState(path: string, team: TeamState): void {
