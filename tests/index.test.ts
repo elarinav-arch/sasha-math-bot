@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { activeSlot, runChildSlot } from "../src/index.js";
+import { activeSlot, runChildSlot, runChildSlotSafely, runPoller } from "../src/index.js";
 import { TelegramPoller, type Telegram } from "../src/telegram.js";
 import { emptyChildProgress, getDay } from "../src/state.js";
 
@@ -27,10 +27,10 @@ function fakeTelegram(overrides: Partial<Telegram> = {}): Telegram {
   } as unknown as Telegram;
 }
 
-// Fix 1: poller.run(...).catch(...) — a poller failure must never surface as an
-// unhandled rejection; it must resolve to a settled (non-rejecting) promise once caught,
-// exactly the way main() now wraps it.
-test("a TelegramPoller.run() rejection is absorbed by the .catch wrapping used in main(), not left to reject", async () => {
+// Fix 1: runPoller(...) — a poller failure must never surface as an unhandled rejection;
+// it must resolve to a settled (non-rejecting) promise once caught, exactly the real
+// helper main() calls (not a hand-copied .catch snippet).
+test("runPoller absorbs a TelegramPoller.run() rejection instead of leaving it to reject", async () => {
   const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   const tg = fakeTelegram({
     getUpdates: async () => {
@@ -39,25 +39,21 @@ test("a TelegramPoller.run() rejection is absorbed by the .catch wrapping used i
   });
   const poller = new TelegramPoller(tg, 0);
 
-  const pollerDone = poller
-    .run(() => {})
-    .catch((err) => {
-      console.error("TelegramPoller stopped unexpectedly (no more /join handling this run):", err);
-    });
+  const pollerDone = runPoller(poller, () => {});
 
   await expect(pollerDone).resolves.toBeUndefined();
   expect(consoleErrorSpy).toHaveBeenCalledWith(
-    "TelegramPoller stopped unexpectedly (no more /join handling this run):",
+    "TelegramPoller stopped unexpectedly (no more message delivery — replies or joins — for the rest of this run):",
     expect.any(Error),
   );
 
   consoleErrorSpy.mockRestore();
 });
 
-// Fix 2: each runChildSlot(...) call in the Promise.all batch is wrapped with its own
-// .catch(...) so one child's thrown error can't reject the whole batch and wipe out
-// siblings' already-completed progress.
-test("one child's runChildSlot rejection is isolated by per-child .catch, siblings still settle", async () => {
+// Fix 2: runChildSlotSafely(...) wraps each child's session with its own .catch so one
+// child's thrown error can't reject the whole Promise.all batch and wipe out siblings'
+// already-completed progress. Calls the real helper main() calls, not a copy.
+test("runChildSlotSafely isolates one child's rejection so siblings still settle", async () => {
   const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   const sentToB: string[] = [];
   const tg = fakeTelegram({
@@ -73,13 +69,9 @@ test("one child's runChildSlot rejection is isolated by per-child .catch, siblin
   const childB = emptyChildProgress(222, "B", "2026-01-01");
   const date = "2026-08-16";
 
-  // Same shape main() uses: Promise.all(dueChildren.map((child) => runChildSlot(...).catch(...)))
+  // Same shape main() uses: Promise.all(dueChildren.map((child) => runChildSlotSafely(...)))
   await Promise.all(
-    [childA, childB].map((child) =>
-      runChildSlot(poller, tg, child, date, "morning").catch((err) => {
-        console.error(`Session failed for child ${child.chatId} (${child.name}):`, err);
-      }),
-    ),
+    [childA, childB].map((child) => runChildSlotSafely(poller, tg, child, date, "morning")),
   );
 
   expect(consoleErrorSpy).toHaveBeenCalledWith(

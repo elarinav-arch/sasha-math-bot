@@ -124,6 +124,29 @@ export async function runChildSlot(
   }
 }
 
+// Оборачивает общий поллер: если он падает (сеть/API), не роняем весь процесс —
+// просто прекращаем обработку /join и входящих ответов до конца этого запуска;
+// уже идущие детские сессии сами уйдут по своему таймауту, а не зависнут.
+export function runPoller(poller: TelegramPoller, onUnmatched: (msg: DeliveredMessage) => void): Promise<void> {
+  return poller.run(onUnmatched).catch((err) => {
+    console.error("TelegramPoller stopped unexpectedly (no more message delivery — replies or joins — for the rest of this run):", err);
+  });
+}
+
+// Изолирует одного ребёнка: если его сессия падает, остальные дети в этом же
+// запуске всё равно сохранят свой прогресс через saveTeamState в конце main().
+export function runChildSlotSafely(
+  poller: TelegramPoller,
+  tg: Telegram,
+  child: ChildProgress,
+  date: string,
+  slot: Slot,
+): Promise<void> {
+  return runChildSlot(poller, tg, child, date, slot).catch((err) => {
+    console.error(`Session failed for child ${child.chatId} (${child.name}):`, err);
+  });
+}
+
 async function handleUnmatched(team: TeamState, inviteCode: string, tg: Telegram, msg: DeliveredMessage): Promise<void> {
   const result = tryJoin(team, msg.text, inviteCode, msg.chatId, msg.fromName, new Date());
   if (result.kind === "welcome") {
@@ -159,13 +182,9 @@ async function main(): Promise<void> {
 
   const tg = new Telegram(token);
   const poller = new TelegramPoller(tg);
-  const pollerDone = poller
-    .run((msg) => {
-      void handleUnmatched(team, inviteCode, tg, msg);
-    })
-    .catch((err) => {
-      console.error("TelegramPoller stopped unexpectedly (no more /join handling this run):", err);
-    });
+  const pollerDone = runPoller(poller, (msg) => {
+    void handleUnmatched(team, inviteCode, tg, msg);
+  });
 
   const dueChildren = Object.values(team.children).filter((child) => {
     const day = getDay(child, date);
@@ -174,13 +193,7 @@ async function main(): Promise<void> {
     return true;
   });
 
-  await Promise.all(
-    dueChildren.map((child) =>
-      runChildSlot(poller, tg, child, date, slot).catch((err) => {
-        console.error(`Session failed for child ${child.chatId} (${child.name}):`, err);
-      }),
-    ),
-  );
+  await Promise.all(dueChildren.map((child) => runChildSlotSafely(poller, tg, child, date, slot)));
 
   if (slot === "evening" && team.lastEveningWrapUp !== date) {
     team.lastEveningWrapUp = date;
