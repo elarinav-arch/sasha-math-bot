@@ -70,7 +70,7 @@ async function announceCard(tg: Telegram, chatId: number, card: Card, title: str
   else await tg.sendMessage(chatId, `🃏 ${caption}`);
 }
 
-async function runChildSlot(
+export async function runChildSlot(
   poller: TelegramPoller,
   tg: Telegram,
   child: ChildProgress,
@@ -119,7 +119,8 @@ async function runChildSlot(
         if (bonusCard) await announceCard(tg, child.chatId, bonusCard, "🎉 Бонусная карточка — ты справилась!");
       }
     }
-    finishDay(child, date);
+    const { streakCard } = finishDay(child, date);
+    if (streakCard) await announceCard(tg, child.chatId, streakCard, `🔥 Серия ${child.streak} дней! Особая награда:`);
   }
 }
 
@@ -158,9 +159,13 @@ async function main(): Promise<void> {
 
   const tg = new Telegram(token);
   const poller = new TelegramPoller(tg);
-  const pollerDone = poller.run((msg) => {
-    void handleUnmatched(team, inviteCode, tg, msg);
-  });
+  const pollerDone = poller
+    .run((msg) => {
+      void handleUnmatched(team, inviteCode, tg, msg);
+    })
+    .catch((err) => {
+      console.error("TelegramPoller stopped unexpectedly (no more /join handling this run):", err);
+    });
 
   const dueChildren = Object.values(team.children).filter((child) => {
     const day = getDay(child, date);
@@ -169,7 +174,13 @@ async function main(): Promise<void> {
     return true;
   });
 
-  await Promise.all(dueChildren.map((child) => runChildSlot(poller, tg, child, date, slot)));
+  await Promise.all(
+    dueChildren.map((child) =>
+      runChildSlot(poller, tg, child, date, slot).catch((err) => {
+        console.error(`Session failed for child ${child.chatId} (${child.name}):`, err);
+      }),
+    ),
+  );
 
   if (slot === "evening" && team.lastEveningWrapUp !== date) {
     team.lastEveningWrapUp = date;
