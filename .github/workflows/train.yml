@@ -41,7 +41,7 @@ jobs:
       - run: npm start
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHILD_CHAT_ID: ${{ secrets.CHILD_CHAT_ID }}
+          TEAM_INVITE_CODE: ${{ secrets.TEAM_INVITE_CODE }}
           PARENT_CHAT_ID: ${{ secrets.PARENT_CHAT_ID }}
           SESSION_SLOT: ${{ github.event.inputs.slot }}
       - name: Commit progress
