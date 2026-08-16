@@ -5,7 +5,16 @@
       "name": "Maxim",
       "joinedAt": "2026-08-16T17:49:15.437Z",
       "facts": {},
-      "days": [],
+      "days": [
+        {
+          "date": "2026-08-16",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "evening"
+          ]
+        }
+      ],
       "streak": 0,
       "cards": [],
       "totalStars": 0
