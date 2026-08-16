@@ -1,12 +1,19 @@
 import { existsSync } from "node:fs";
 import { allFacts } from "./facts.js";
+import { localDate, weekStartFor } from "./calendar.js";
 import { pickSessionFacts } from "./leitner.js";
-import { parentReport } from "./report.js";
-import { awardBonusCard, finishDay, recordSession, rollSessionCard, starsForSession } from "./rewards.js";
+import { teamReport } from "./report.js";
+import {
+  awardBonusCard, ensureCurrentWeek, finishDay, finishWeek, recordSession, rollSessionCard, starsForSession,
+} from "./rewards.js";
 import { rarityLabel, type Card } from "./cards.js";
+import { tryJoin } from "./registration.js";
 import { runSession } from "./session.js";
-import { cardsWonToday, getDay, hasAttemptedSlot, loadProgress, markSlotAttempted, saveProgress } from "./state.js";
-import { Telegram, TelegramIO } from "./telegram.js";
+import {
+  cardsWonToday, getDay, hasAttemptedSlot, loadTeamState, markSlotAttempted, saveTeamState,
+  type ChildProgress, type TeamState,
+} from "./state.js";
+import { PolledIO, Telegram, TelegramPoller, type DeliveredMessage } from "./telegram.js";
 
 export type Slot = "morning" | "midday" | "evening";
 
@@ -25,7 +32,7 @@ interface SlotWindow {
 const SLOT_SCHEDULE: SlotWindow[] = [
   { slot: "morning", startMinutes: 14 * 60, endMinutes: 17 * 60 },
   { slot: "midday", startMinutes: 17 * 60, endMinutes: 19 * 60 },
-  { slot: "evening", startMinutes: 19 * 60, endMinutes: 22 * 60 }, // последнее — тут подводим итоги дня
+  { slot: "evening", startMinutes: 19 * 60, endMinutes: 22 * 60 }, // последнее — тут подводим итоги дня/недели
 ];
 
 export function activeSlot(now: Date): Slot | null {
@@ -40,15 +47,6 @@ export function activeSlot(now: Date): Slot | null {
   const nowMinutes = hour * 60 + minute;
   const s = SLOT_SCHEDULE.find((w) => nowMinutes >= w.startMinutes && nowMinutes < w.endMinutes);
   return s ? s.slot : null;
-}
-
-export function localDate(d: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Nicosia",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
 }
 
 const NEXT_TIME: Record<Slot, string> = {
@@ -72,11 +70,77 @@ async function announceCard(tg: Telegram, chatId: number, card: Card, title: str
   else await tg.sendMessage(chatId, `🃏 ${caption}`);
 }
 
+async function runChildSlot(
+  poller: TelegramPoller,
+  tg: Telegram,
+  child: ChildProgress,
+  date: string,
+  slot: Slot,
+): Promise<void> {
+  const io = new PolledIO(poller, child.chatId, Date.now() + WINDOW_MINUTES * 60_000);
+  const facts = pickSessionFacts(child, allFacts(), QUESTIONS, new Date());
+  const result = await runSession(io, child, facts);
+
+  if (result.finished && result.answered > 0) {
+    const stars = starsForSession(result.correct, result.answered);
+    const dayAfter = recordSession(child, date, stars);
+    await io.send(
+      `🏁 Итог: ${result.correct} из ${result.answered} верно!\n` +
+        `${"⭐".repeat(stars)} +${stars} (за день: ${dayAfter.stars} ⭐)\n` +
+        `Следующая тренировка ${NEXT_TIME[slot]} 🐾`,
+    );
+    const wonCard = rollSessionCard(child, date, stars);
+    if (wonCard) await announceCard(tg, child.chatId, wonCard, "🃏 Новая карточка за отличную тренировку!");
+  } else if (!result.finished) {
+    await tg.sendMessage(
+      child.chatId,
+      `Сегодня не вышло потренироваться — бывает! 🙂 Команда будет ждать ${NEXT_TIME[slot]} 🐾`,
+    );
+  }
+
+  if (slot === "evening") {
+    const day = getDay(child, date);
+    if (cardsWonToday(day).length === 0) {
+      await tg.sendMessage(
+        child.chatId,
+        `🎯 Бонусный раунд! Ещё ${BONUS_QUESTIONS} примеров — и карточка дня твоя, что бы ни было!`,
+      );
+      io.extendDeadline(BONUS_WINDOW_MINUTES * 60_000);
+      const bonusFacts = pickSessionFacts(child, allFacts(), BONUS_QUESTIONS, new Date());
+      const bonusResult = await runSession(io, child, bonusFacts);
+      if (bonusResult.finished && bonusResult.answered > 0) {
+        const bonusStars = starsForSession(bonusResult.correct, bonusResult.answered);
+        recordSession(child, date, bonusStars);
+        day.bonusRoundDone = true;
+        await io.send(
+          `🏁 Бонус завершён: ${bonusResult.correct} из ${bonusResult.answered} верно! ${"⭐".repeat(bonusStars)}`,
+        );
+        const bonusCard = awardBonusCard(child, date);
+        if (bonusCard) await announceCard(tg, child.chatId, bonusCard, "🎉 Бонусная карточка — ты справилась!");
+      }
+    }
+    finishDay(child, date);
+  }
+}
+
+async function handleUnmatched(team: TeamState, inviteCode: string, tg: Telegram, msg: DeliveredMessage): Promise<void> {
+  const result = tryJoin(team, msg.text, inviteCode, msg.chatId, msg.fromName, new Date());
+  if (result.kind === "welcome") {
+    await tg.sendMessage(
+      msg.chatId,
+      `🐾 Добро пожаловать в команду, ${result.name}! Первая тренировка — на ближайшем окне (14:00 / 17:00 / 19:00 по Кипру).`,
+    );
+  } else if (result.kind === "already-member") {
+    await tg.sendMessage(msg.chatId, "Ты уже в команде! 🐾 До следующей тренировки.");
+  }
+  // "wrong-code" — молчим: не подсказываем постороннему, что не так.
+}
+
 async function main(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = Number(process.env.CHILD_CHAT_ID);
+  const inviteCode = process.env.TEAM_INVITE_CODE;
   const parentChatId = process.env.PARENT_CHAT_ID ? Number(process.env.PARENT_CHAT_ID) : null;
-  if (!token || !chatId) throw new Error("TELEGRAM_BOT_TOKEN and CHILD_CHAT_ID are required");
+  if (!token || !inviteCode) throw new Error("TELEGRAM_BOT_TOKEN and TEAM_INVITE_CODE are required");
 
   // Явный SESSION_SLOT (ручной запуск через workflow_dispatch) форсирует слот,
   // даже вне окна и даже если этот слот сегодня уже отмечен как проведённый.
@@ -89,70 +153,47 @@ async function main(): Promise<void> {
   }
 
   const date = localDate();
-  const progress = loadProgress(PROGRESS_PATH);
-  const day = getDay(progress, date);
-  if (!forced && hasAttemptedSlot(day, slot)) {
-    console.log(`Слот ${slot} за ${date} уже был запущен сегодня — пропускаю повтор.`);
-    return;
-  }
-  markSlotAttempted(day, slot);
-
-  const facts = pickSessionFacts(progress, allFacts(), QUESTIONS, new Date());
+  const team = loadTeamState(PROGRESS_PATH);
+  ensureCurrentWeek(team, weekStartFor(date));
 
   const tg = new Telegram(token);
-  const startedAt = Date.now();
-  const io = new TelegramIO(tg, chatId, startedAt, startedAt + WINDOW_MINUTES * 60_000);
+  const poller = new TelegramPoller(tg);
+  const pollerDone = poller.run((msg) => {
+    void handleUnmatched(team, inviteCode, tg, msg);
+  });
 
-  const result = await runSession(io, progress, facts);
+  const dueChildren = Object.values(team.children).filter((child) => {
+    const day = getDay(child, date);
+    if (!forced && hasAttemptedSlot(day, slot)) return false;
+    markSlotAttempted(day, slot);
+    return true;
+  });
 
-  if (result.finished && result.answered > 0) {
-    const stars = starsForSession(result.correct, result.answered);
-    const dayAfter = recordSession(progress, date, stars);
-    await io.send(
-      `🏁 Итог: ${result.correct} из ${result.answered} верно!\n` +
-        `${"⭐".repeat(stars)} +${stars} (за день: ${dayAfter.stars} ⭐)\n` +
-        `Следующая тренировка ${NEXT_TIME[slot]} 🐾`,
-    );
-    const wonCard = rollSessionCard(progress, date, stars);
-    if (wonCard) await announceCard(tg, chatId, wonCard, "🃏 Новая карточка за отличную тренировку!");
-  } else if (!result.finished) {
-    await tg.sendMessage(
-      chatId,
-      `Сегодня не вышло потренироваться — бывает! 🙂 Пушистая команда будет ждать ${NEXT_TIME[slot]} 🐾`,
-    );
-  }
+  await Promise.all(dueChildren.map((child) => runChildSlot(poller, tg, child, date, slot)));
 
-  if (slot === "evening") {
-    if (cardsWonToday(day).length === 0) {
-      console.log("За весь день не выпало ни одной карточки — предлагаю бонусный раунд.");
-      await tg.sendMessage(
-        chatId,
-        `🎯 Бонусный раунд! Ещё ${BONUS_QUESTIONS} примеров — и карточка дня твоя, что бы ни было!`,
-      );
-      io.extendDeadline(BONUS_WINDOW_MINUTES * 60_000);
-      const bonusFacts = pickSessionFacts(progress, allFacts(), BONUS_QUESTIONS, new Date());
-      const bonusResult = await runSession(io, progress, bonusFacts);
-      if (bonusResult.finished && bonusResult.answered > 0) {
-        const bonusStars = starsForSession(bonusResult.correct, bonusResult.answered);
-        recordSession(progress, date, bonusStars);
-        day.bonusRoundDone = true;
-        await io.send(
-          `🏁 Бонус завершён: ${bonusResult.correct} из ${bonusResult.answered} верно! ${"⭐".repeat(bonusStars)}`,
-        );
-        const bonusCard = awardBonusCard(progress, date);
-        if (bonusCard) await announceCard(tg, chatId, bonusCard, "🎉 Бонусная карточка — ты справилась!");
-        else console.log("Бонусный раунд пройден, но коллекция уже полностью собрана.");
-      } else {
-        console.log("Бонусный раунд предложен, но ответа не было — карточка дня не гарантирована.");
+  if (slot === "evening" && team.lastEveningWrapUp !== date) {
+    team.lastEveningWrapUp = date;
+    const weekStart = weekStartFor(date);
+    const isSunday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Nicosia", weekday: "short" }).format(new Date()) === "Sun";
+    if (isSunday) {
+      const { goalMet, trophyCard } = finishWeek(team, weekStart);
+      const allChildren = Object.values(team.children);
+      if (goalMet && trophyCard) {
+        for (const child of allChildren) {
+          await announceCard(tg, child.chatId, trophyCard, "🏆 Команда справилась на этой неделе!");
+        }
+      } else if (!goalMet && allChildren.length > 0) {
+        for (const child of allChildren) {
+          await tg.sendMessage(child.chatId, "Почти-почти! На следующей неделе команда точно справится 💪");
+        }
       }
     }
-
-    const { streakCard } = finishDay(progress, date);
-    if (streakCard) await announceCard(tg, chatId, streakCard, `🔥 Серия ${progress.streak} дней! Особая награда:`);
-    if (parentChatId) await tg.sendMessage(parentChatId, parentReport(progress, date));
+    if (parentChatId) await tg.sendMessage(parentChatId, teamReport(team, date, weekStart));
   }
 
-  saveProgress(PROGRESS_PATH, progress);
+  poller.stop();
+  await pollerDone;
+  saveTeamState(PROGRESS_PATH, team);
 }
 
 // Запускаем main только при прямом старте (не при импорте из тестов)
