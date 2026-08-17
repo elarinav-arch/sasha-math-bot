@@ -1,11 +1,22 @@
 import { expect, test, vi } from "vitest";
-import { dispatchUpdates, PolledIO, TelegramPoller, type Update } from "../src/telegram.js";
-import type { Telegram } from "../src/telegram.js";
+import { dispatchUpdates, PolledIO, Telegram, TelegramPoller, type Update } from "../src/telegram.js";
 
 function upd(id: number, chatId: number, text: string, dateSec: number, firstName?: string): Update {
   return {
     update_id: id,
     message: { message_id: id, date: dateSec, text, chat: { id: chatId }, from: firstName ? { first_name: firstName } : undefined },
+  };
+}
+
+function cbUpd(id: number, chatId: number, data?: string, firstName?: string): Update {
+  return {
+    update_id: id,
+    callback_query: {
+      id: `cb${id}`,
+      data,
+      from: firstName ? { first_name: firstName } : undefined,
+      message: { chat: { id: chatId } },
+    },
   };
 }
 
@@ -51,6 +62,47 @@ test("empty batch returns offset 0 and no deliveries", () => {
 test("missing sender name falls back to a friendly default", () => {
   const r = dispatchUpdates([upd(10, 100, "/join X", 1000)], 0);
   expect(r.delivered[0].fromName).toBe("друг");
+});
+
+test("dispatchUpdates delivers a callback_query's data as the message text", () => {
+  const r = dispatchUpdates([cbUpd(20, 300, "start_onboarding", "Саша")], 0);
+  expect(r.offset).toBe(21);
+  expect(r.delivered).toEqual([{ chatId: 300, text: "start_onboarding", fromName: "Саша" }]);
+});
+
+test("dispatchUpdates routes a mixed batch of message and callback_query updates", () => {
+  const updates = [upd(10, 100, "6", 1000, "Женя"), cbUpd(11, 200, "start_onboarding", "Саша")];
+  const r = dispatchUpdates(updates, 0);
+  expect(r.delivered).toEqual([
+    { chatId: 100, text: "6", fromName: "Женя" },
+    { chatId: 200, text: "start_onboarding", fromName: "Саша" },
+  ]);
+});
+
+test("dispatchUpdates skips a callback_query with no data, offset still advances", () => {
+  const r = dispatchUpdates([cbUpd(30, 400)], 0);
+  expect(r.delivered).toEqual([]);
+  expect(r.offset).toBe(31);
+});
+
+test("dispatchUpdates delivers only the first interaction per chat even across message/callback_query in one batch", () => {
+  const updates = [cbUpd(40, 500, "start_onboarding"), upd(41, 500, "MURR2026", 1000)];
+  const r = dispatchUpdates(updates, 0);
+  expect(r.delivered).toEqual([{ chatId: 500, text: "start_onboarding", fromName: "друг" }]);
+});
+
+test("dispatchUpdates missing callback_query sender name falls back to a friendly default", () => {
+  const r = dispatchUpdates([cbUpd(50, 600, "start_onboarding")], 0);
+  expect(r.delivered[0].fromName).toBe("друг");
+});
+
+test("dispatchUpdates skips a callback_query with no message (e.g. inline-mode origin), offset still advances", () => {
+  const updates: Update[] = [
+    { update_id: 60, callback_query: { id: "cb60", data: "start_onboarding" } }, // нет поля message
+  ];
+  const r = dispatchUpdates(updates, 0);
+  expect(r.delivered).toEqual([]);
+  expect(r.offset).toBe(61);
 });
 
 test("pollOnce resolves a waiting child's promise when their message arrives", async () => {
@@ -211,4 +263,101 @@ test("PolledIO.extendDeadline extends the window honored by a subsequent waitFor
 
   expect(await replyPromise).toBe("7");
   vi.useRealTimers();
+});
+
+test("Telegram.getUpdates requests both message and callback_query updates from Telegram's API", async () => {
+  const fetchSpy = vi.fn(async () => ({
+    json: async () => ({ ok: true, result: [] }),
+  })) as unknown as typeof fetch;
+  vi.stubGlobal("fetch", fetchSpy);
+
+  const tg = new Telegram("FAKE_TOKEN");
+  await tg.getUpdates(0, 20);
+
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  const [, init] = (fetchSpy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
+  const body = JSON.parse(init.body as string);
+  expect(body.allowed_updates).toEqual(["message", "callback_query"]);
+
+  vi.unstubAllGlobals();
+});
+
+test("pollOnce answers a callback_query so the button stops showing a loading spinner", async () => {
+  const answered: string[] = [];
+  const tg = {
+    getUpdates: async () => [cbUpd(1, 700, "start_onboarding")],
+    answerCallbackQuery: async (id: string) => {
+      answered.push(id);
+    },
+  } as unknown as Telegram;
+  const poller = new TelegramPoller(tg, 0);
+  await poller.pollOnce(() => {});
+  expect(answered).toEqual(["cb1"]);
+});
+
+test("pollOnce answers every callback_query in a batch, even ones with no data", async () => {
+  const answered: string[] = [];
+  const tg = {
+    getUpdates: async () => [cbUpd(1, 700), cbUpd(2, 800, "start_onboarding")],
+    answerCallbackQuery: async (id: string) => {
+      answered.push(id);
+    },
+  } as unknown as Telegram;
+  const poller = new TelegramPoller(tg, 0);
+  await poller.pollOnce(() => {});
+  expect(answered).toEqual(["cb1", "cb2"]);
+});
+
+test("pollOnce does not throw if answerCallbackQuery fails — same defensive pattern as elsewhere in this file", async () => {
+  const tg = {
+    getUpdates: async () => [cbUpd(1, 700, "start_onboarding")],
+    answerCallbackQuery: async () => {
+      throw new Error("Telegram API error");
+    },
+  } as unknown as Telegram;
+  const poller = new TelegramPoller(tg, 0);
+  await expect(poller.pollOnce(() => {})).resolves.toBeUndefined();
+});
+
+// waitForCurrentCycle: используется main() перед проверкой onboarding.waitForAll(),
+// чтобы дождаться, пока ТЕКУЩИЙ (уже запущенный или ещё не начавшийся) цикл опроса
+// реально завершится — то есть пока getUpdates() не ответит и pollOnce не разберёт
+// пачку. Управляем разрешением getUpdates вручную (а не через setTimeout), чтобы
+// тест был детерминированным, а не полагался на время.
+test("waitForCurrentCycle does not resolve until the in-flight pollOnce's getUpdates resolves", async () => {
+  let releaseGetUpdates!: (updates: Update[]) => void;
+  const getUpdatesPromise = new Promise<Update[]>((resolve) => {
+    releaseGetUpdates = resolve;
+  });
+  let callCount = 0;
+  const tg = fakeTelegram(() => {
+    callCount++;
+    // Второй и последующие вызовы (следующий цикл run()) намеренно зависают
+    // навсегда — этому тесту важен только самый первый цикл.
+    return callCount === 1 ? getUpdatesPromise : new Promise<Update[]>(() => {});
+  });
+  const poller = new TelegramPoller(tg, 0);
+
+  void poller.run(() => {}); // запускаем цикл опроса в фоне, не ждём его целиком
+
+  let resolved = false;
+  const waitPromise = poller.waitForCurrentCycle().then(() => {
+    resolved = true;
+  });
+
+  // getUpdates ещё не ответил — цикл не может завершиться, сколько микротасков ни жди
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(resolved).toBe(false);
+
+  releaseGetUpdates([]);
+  await waitPromise;
+  expect(resolved).toBe(true);
+});
+
+test("waitForCurrentCycle resolves immediately if run() was never called (currentCycle defaults to Promise.resolve())", async () => {
+  const tg = fakeTelegram(async () => []);
+  const poller = new TelegramPoller(tg, 0);
+  await expect(poller.waitForCurrentCycle()).resolves.toBeUndefined();
 });

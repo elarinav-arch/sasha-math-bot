@@ -12,6 +12,12 @@ export interface Update {
     chat: { id: number };
     from?: { first_name?: string };
   };
+  callback_query?: {
+    id: string;
+    data?: string;
+    from?: { first_name?: string };
+    message?: { chat: { id: number } };
+  };
 }
 
 export class Telegram {
@@ -42,8 +48,25 @@ export class Telegram {
     if (!data.ok) throw new Error(`Telegram sendPhoto: ${data.description}`);
   }
 
+  async answerCallbackQuery(callbackQueryId: string): Promise<void> {
+    await this.call("answerCallbackQuery", { callback_query_id: callbackQueryId });
+  }
+
+  async sendMessageWithButton(
+    chatId: number | string,
+    text: string,
+    buttonText: string,
+    callbackData: string,
+  ): Promise<void> {
+    await this.call("sendMessage", {
+      chat_id: chatId,
+      text,
+      reply_markup: { inline_keyboard: [[{ text: buttonText, callback_data: callbackData }]] },
+    });
+  }
+
   getUpdates(offset: number, timeoutSec: number): Promise<Update[]> {
-    return this.call("getUpdates", { offset, timeout: timeoutSec, allowed_updates: ["message"] });
+    return this.call("getUpdates", { offset, timeout: timeoutSec, allowed_updates: ["message", "callback_query"] });
   }
 }
 
@@ -57,6 +80,12 @@ export interface DeliveredMessage {
 // не только один конкретный chatId, как раньше в nextReply, а сразу все.
 // В пределах одной пачки от одного чата доставляется только первое сообщение
 // (та же семантика, что была у nextReply — офсет всё равно продвигается за всю пачку).
+// Нажатие inline-кнопки (callback_query) нормализуется в тот же DeliveredMessage,
+// что и обычный текст — text становится данными кнопки (callback_data). Так
+// TelegramPoller.waitFor не должен ничего знать про разницу между "написал"
+// и "нажал кнопку" — это уже сделано на уровне диспетчеризации. У callback_query
+// нет своего времени отправки (Telegram его не присылает), поэтому фильтр
+// notBeforeMs к нему не применяется — нажатие кнопки всегда актуально.
 export function dispatchUpdates(
   updates: Update[],
   notBeforeMs: number,
@@ -67,10 +96,17 @@ export function dispatchUpdates(
   for (const u of updates) {
     offset = Math.max(offset, u.update_id + 1);
     const m = u.message;
-    if (!m?.text || seen.has(m.chat.id)) continue;
-    if (m.date * 1000 < notBeforeMs) continue; // старое сообщение из очереди вне окна
-    seen.add(m.chat.id);
-    delivered.push({ chatId: m.chat.id, text: m.text, fromName: m.from?.first_name ?? "друг" });
+    if (m?.text && !seen.has(m.chat.id) && m.date * 1000 >= notBeforeMs) {
+      seen.add(m.chat.id);
+      delivered.push({ chatId: m.chat.id, text: m.text, fromName: m.from?.first_name ?? "друг" });
+      continue;
+    }
+    const cq = u.callback_query;
+    const cqChatId = cq?.message?.chat.id;
+    if (cq?.data && cqChatId !== undefined && !seen.has(cqChatId)) {
+      seen.add(cqChatId);
+      delivered.push({ chatId: cqChatId, text: cq.data, fromName: cq.from?.first_name ?? "друг" });
+    }
   }
   return { offset, delivered };
 }
@@ -85,6 +121,7 @@ export class TelegramPoller {
   private offset = 0;
   private waiters = new Map<number, (text: string) => void>();
   private stopped = false;
+  private currentCycle: Promise<void> = Promise.resolve();
 
   constructor(
     private tg: Telegram,
@@ -93,6 +130,19 @@ export class TelegramPoller {
 
   async pollOnce(onUnmatched: (msg: DeliveredMessage) => void): Promise<void> {
     const updates = await this.tg.getUpdates(this.offset, 20);
+    // Telegram требует явного ответа на КАЖДЫЙ callback_query, иначе кнопка у
+    // ребёнка в клиенте вечно показывает "крутилку". await + .catch (а не
+    // fire-and-forget) — тот же защитный паттерн, что и везде в этом файле:
+    // необработанный reject здесь стал бы unhandled rejection и уронил бы
+    // весь процесс (тот же класс бага, что уже чинили в runPoller/
+    // runChildSlotSafely/handleUnmatchedSafely в index.ts).
+    for (const u of updates) {
+      if (u.callback_query) {
+        await this.tg.answerCallbackQuery(u.callback_query.id).catch((err) => {
+          console.error(`answerCallbackQuery failed for ${u.callback_query!.id}:`, err);
+        });
+      }
+    }
     const { offset, delivered } = dispatchUpdates(updates, this.startedAtMs - 60_000);
     if (offset > this.offset) this.offset = offset;
     for (const msg of delivered) {
@@ -107,7 +157,21 @@ export class TelegramPoller {
   }
 
   async run(onUnmatched: (msg: DeliveredMessage) => void): Promise<void> {
-    while (!this.stopped) await this.pollOnce(onUnmatched);
+    while (!this.stopped) {
+      this.currentCycle = this.pollOnce(onUnmatched);
+      await this.currentCycle;
+    }
+  }
+
+  // Дожидается завершения ТЕКУЩЕГО (или ещё не начавшегося, но уже запланированного)
+  // цикла опроса. Нужно перед остановкой поллера: onboarding.pending синхронно
+  // пополняется ВНУТРИ pollOnce (см. onUnmatched), поэтому проверка "pending
+  // пуст ли" сама по себе не различает "точно нечего ждать" и "ещё не успели
+  // получить самое первое сообщение этого запуска". Дав текущему циклу
+  // завершиться, мы гарантируем: если что-то пришло — оно уже зарегистрировано
+  // в onboarding.pending к моменту вызова waitForAll().
+  waitForCurrentCycle(): Promise<void> {
+    return this.currentCycle;
   }
 
   stop(): void {

@@ -7,7 +7,7 @@ import {
   awardBonusCard, ensureCurrentWeek, finishDay, finishWeek, recordSession, rollSessionCard, starsForSession,
 } from "./rewards.js";
 import { rarityLabel, type Card } from "./cards.js";
-import { tryJoin } from "./registration.js";
+import { registerChild, validateName } from "./registration.js";
 import { runSession } from "./session.js";
 import {
   cardsWonToday, getDay, hasAttemptedSlot, loadTeamState, markSlotAttempted, saveTeamState,
@@ -60,6 +60,9 @@ const QUESTIONS = 10;
 const WINDOW_MINUTES = 60;
 const BONUS_QUESTIONS = 5;
 const BONUS_WINDOW_MINUTES = 20;
+const ONBOARDING_STEP_MINUTES = 5;
+const START_CALLBACK_DATA = "start_onboarding";
+const ONBOARDING_SETTLE_CYCLES = 3;
 
 async function announceCard(tg: Telegram, chatId: number, card: Card, title: string): Promise<void> {
   const caption =
@@ -125,7 +128,7 @@ export async function runChildSlot(
 }
 
 // Оборачивает общий поллер: если он падает (сеть/API), не роняем весь процесс —
-// просто прекращаем обработку /join и входящих ответов до конца этого запуска;
+// просто прекращаем обработку регистрации и входящих ответов до конца этого запуска;
 // уже идущие детские сессии сами уйдут по своему таймауту, а не зависнут.
 export function runPoller(poller: TelegramPoller, onUnmatched: (msg: DeliveredMessage) => void): Promise<void> {
   return poller.run(onUnmatched).catch((err) => {
@@ -147,17 +150,90 @@ export function runChildSlotSafely(
   });
 }
 
-async function handleUnmatched(team: TeamState, inviteCode: string, tg: Telegram, msg: DeliveredMessage): Promise<void> {
-  const result = tryJoin(team, msg.text, inviteCode, msg.chatId, msg.fromName, new Date());
-  if (result.kind === "welcome") {
-    await tg.sendMessage(
-      msg.chatId,
-      `🐾 Добро пожаловать в команду, ${result.name}! Первая тренировка — на ближайшем окне (14:00 / 17:00 / 19:00 по Кипру).`,
-    );
-  } else if (result.kind === "already-member") {
-    await tg.sendMessage(msg.chatId, "Ты уже в команде! 🐾 До следующей тренировки.");
+// Диалог знакомства для НЕзарегистрированного chatId: приветствие с кнопкой →
+// код-приглашение → имя → профиль создан. Каждый шаг ждёт ответа тем же
+// waitFor, что и обычные тренировочные сессии (см. PolledIO) — просто без
+// PolledIO, так как здесь не нужен единый "плавающий" дедлайн, у каждого шага
+// свой фиксированный таймаут. Неверный код или дважды невалидное имя —
+// диалог тихо завершается: тот же принцип, что был у /join — не подсказываем
+// постороннему, что именно не так.
+export async function runOnboarding(
+  poller: TelegramPoller,
+  tg: Telegram,
+  team: TeamState,
+  inviteCode: string,
+  chatId: number,
+  now: () => Date = () => new Date(),
+): Promise<void> {
+  if (team.children[chatId]) {
+    await tg.sendMessage(chatId, "Ты уже в команде! 🐾 До следующей тренировки.");
+    return;
   }
-  // "wrong-code" — молчим: не подсказываем постороннему, что не так.
+
+  await tg.sendMessageWithButton(
+    chatId,
+    "🐱 Привет! Я бот «Мур-математика» — помогаю тренировать таблицу умножения и собирать карточки с котиками. Готов(а) начать?",
+    "🐾 Старт",
+    START_CALLBACK_DATA,
+  );
+  const started = await poller.waitFor(chatId, ONBOARDING_STEP_MINUTES * 60_000);
+  if (started !== START_CALLBACK_DATA) return;
+
+  await tg.sendMessage(chatId, "Отлично! Введи код-приглашения, который тебе дали:");
+  const code = await poller.waitFor(chatId, ONBOARDING_STEP_MINUTES * 60_000);
+  if (code === null || code.trim() !== inviteCode) return;
+
+  await tg.sendMessage(chatId, "Ура, код верный! 🎉 А как тебя зовут?");
+  let name: string | null = null;
+  for (let attempt = 0; attempt < 2 && name === null; attempt++) {
+    const reply = await poller.waitFor(chatId, ONBOARDING_STEP_MINUTES * 60_000);
+    if (reply === null) return;
+    name = validateName(reply);
+    if (name === null && attempt === 0) {
+      await tg.sendMessage(chatId, "Хм, попробуй короче и без лишнего, например «Саша» 🙂");
+    }
+  }
+  if (name === null) return;
+
+  registerChild(team, chatId, name, now());
+  await tg.sendMessage(
+    chatId,
+    `Приятно познакомиться, ${name}! 🐾 Ты в команде «Мур-математика». Первая тренировка — на ближайшем окне (14:00 / 17:00 / 19:00 по Кипру).`,
+  );
+}
+
+// Отслеживает диалоги регистрации, которые идут прямо сейчас (по chatId), чтобы:
+// 1) не запускать два диалога для одного chatId параллельно — если ребёнок
+//    пришлёт два сообщения подряд до первого шага своего диалога, второе
+//    просто игнорируется, а не порождает дублирующееся приветствие;
+// 2) main() мог дождаться завершения ВСЕХ идущих диалогов регистрации перед
+//    остановкой поллера — иначе, если в этот слот больше никто не тренируется,
+//    poller.stop() сработает почти сразу после старта джобы и оборвёт диалог,
+//    даже не успев получить от ребёнка ответ на первое же сообщение.
+export class OnboardingTracker {
+  private pending = new Map<number, Promise<void>>();
+
+  start(chatId: number, run: () => Promise<void>): void {
+    if (this.pending.has(chatId)) return;
+    const p = run().finally(() => this.pending.delete(chatId));
+    this.pending.set(chatId, p);
+  }
+
+  async waitForAll(): Promise<void> {
+    while (this.pending.size > 0) {
+      await Promise.all(this.pending.values());
+    }
+  }
+}
+
+async function handleUnmatched(
+  team: TeamState,
+  inviteCode: string,
+  tg: Telegram,
+  poller: TelegramPoller,
+  msg: DeliveredMessage,
+): Promise<void> {
+  await runOnboarding(poller, tg, team, inviteCode, msg.chatId);
 }
 
 // Изолирует handleUnmatched: он вызывается синхронно, фоново, из поллера
@@ -169,9 +245,10 @@ export function handleUnmatchedSafely(
   team: TeamState,
   inviteCode: string,
   tg: Telegram,
+  poller: TelegramPoller,
   msg: DeliveredMessage,
 ): Promise<void> {
-  return handleUnmatched(team, inviteCode, tg, msg).catch((err) => {
+  return handleUnmatched(team, inviteCode, tg, poller, msg).catch((err) => {
     console.error(`handleUnmatched failed for chatId ${msg.chatId}:`, err);
   });
 }
@@ -214,6 +291,35 @@ export async function runEveningWrapUp(
   }
 }
 
+// Даёт поллеру несколько дополнительных циклов опроса после того, как основная
+// работа этого запуска (сессии due-детей, итоги недели) закончена — чтобы
+// диалог знакомства только что написавшего ребёнка успел получить шанс на
+// ответ, прежде чем поллер остановится. Один цикл (как было раньше) не всегда
+// достаточно: getUpdates — настоящий long-poll (timeout 20с), и если на момент
+// запроса сообщение ещё не пришло, ответ будет пустым, а реальное сообщение
+// придёт только СЛЕДУЮЩИМ циклом. Несколько циклов подряд снижают вероятность
+// этого, но НЕ дают железной гарантии — теоретически сообщение может прийти
+// ещё позже. Для типичного случая (ребёнок отвечает почти сразу после
+// приветствия) этого запаса достаточно; если нет — диалог просто завершится
+// по своему собственному таймауту внутри runOnboarding, как и при обычном
+// отсутствии ответа. Ошибка поллера на любом цикле — не повод ронять весь
+// запуск: просто прекращаем ждать дальше, тот же принцип, что и у runPoller.
+export async function settlePollerCycles(
+  poller: TelegramPoller,
+  onboarding: OnboardingTracker,
+  cycles: number,
+): Promise<void> {
+  for (let i = 0; i < cycles; i++) {
+    try {
+      await poller.waitForCurrentCycle();
+    } catch (err) {
+      console.error("Poller cycle failed while settling onboarding dialogs:", err);
+      break;
+    }
+    await onboarding.waitForAll();
+  }
+}
+
 async function main(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const inviteCode = process.env.TEAM_INVITE_CODE;
@@ -236,8 +342,9 @@ async function main(): Promise<void> {
 
   const tg = new Telegram(token);
   const poller = new TelegramPoller(tg);
+  const onboarding = new OnboardingTracker();
   const pollerDone = runPoller(poller, (msg) => {
-    void handleUnmatchedSafely(team, inviteCode, tg, msg);
+    onboarding.start(msg.chatId, () => handleUnmatchedSafely(team, inviteCode, tg, poller, msg));
   });
 
   const dueChildren = Object.values(team.children).filter((child) => {
@@ -255,6 +362,15 @@ async function main(): Promise<void> {
     const isSunday = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Nicosia", weekday: "short" }).format(new Date()) === "Sun";
     await runEveningWrapUp(tg, team, date, weekStart, isSunday, parentChatId);
   }
+
+  // Даём поллеру несколько циклов опроса, прежде чем проверять
+  // onboarding.waitForAll() — иначе, если этот запуск не тренирует ни одного
+  // уже зарегистрированного ребёнка (dueChildren пуст — обычное дело на
+  // резервных тиках cron), можно дойти досюда быстрее, чем поллер успеет
+  // получить самое первое сообщение нового ребёнка, и остановить поллер до
+  // того, как диалог знакомства вообще успеет начаться. См. settlePollerCycles
+  // — почему одного цикла недостаточно и что это НЕ железная гарантия.
+  await settlePollerCycles(poller, onboarding, ONBOARDING_SETTLE_CYCLES);
 
   poller.stop();
   await pollerDone;

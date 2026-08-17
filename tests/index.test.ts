@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import {
-  activeSlot, handleUnmatchedSafely, runChildSlot, runChildSlotSafely, runEveningWrapUp, runPoller,
+  activeSlot, handleUnmatchedSafely, OnboardingTracker, runChildSlot, runChildSlotSafely, runEveningWrapUp,
+  runOnboarding, runPoller, settlePollerCycles,
 } from "../src/index.js";
 import { TelegramPoller, type DeliveredMessage, type Telegram } from "../src/telegram.js";
 import { emptyChildProgress, emptyTeamState, getDay } from "../src/state.js";
@@ -25,6 +26,7 @@ function fakeTelegram(overrides: Partial<Telegram> = {}): Telegram {
     getUpdates: async () => [],
     sendMessage: async () => {},
     sendPhoto: async () => {},
+    sendMessageWithButton: async () => {},
     ...overrides,
   } as unknown as Telegram;
 }
@@ -59,14 +61,15 @@ test("runPoller absorbs a TelegramPoller.run() rejection instead of leaving it t
 test("handleUnmatchedSafely absorbs a handleUnmatched rejection instead of leaving it to reject", async () => {
   const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   const tg = fakeTelegram({
-    sendMessage: async () => {
+    sendMessageWithButton: async () => {
       throw new Error("Forbidden: bot was blocked by the user");
     },
   });
+  const poller = new TelegramPoller(tg, 0);
   const team = emptyTeamState();
-  const msg: DeliveredMessage = { chatId: 555, text: "/join SASHA2026", fromName: "Тест" };
+  const msg: DeliveredMessage = { chatId: 555, text: "/start", fromName: "Тест" };
 
-  const result = handleUnmatchedSafely(team, "SASHA2026", tg, msg);
+  const result = handleUnmatchedSafely(team, "SASHA2026", tg, poller, msg);
 
   await expect(result).resolves.toBeUndefined();
   expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -190,4 +193,439 @@ test("runEveningWrapUp isolates a failed parent report send instead of throwing"
   expect(consoleErrorSpy).toHaveBeenCalledWith("Team report send to parent failed:", expect.any(Error));
 
   consoleErrorSpy.mockRestore();
+});
+
+test("runOnboarding walks a new child through button, code, and name to registration", async () => {
+  const sent: string[] = [];
+  let buttonSent: { text: string; buttonText: string; callbackData: string } | null = null;
+  const tg = fakeTelegram({
+    sendMessage: async (_chatId: number | string, text: string) => {
+      sent.push(text);
+    },
+    sendMessageWithButton: async (
+      _chatId: number | string,
+      text: string,
+      buttonText: string,
+      callbackData: string,
+    ) => {
+      buttonSent = { text, buttonText, callbackData };
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  const waitForSpy = vi
+    .spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("MURR2026")
+    .mockResolvedValueOnce("Саша");
+  const team = emptyTeamState();
+  const now = () => new Date("2026-08-17T12:00:00Z");
+
+  await runOnboarding(poller, tg, team, "MURR2026", 100, now);
+
+  expect(buttonSent).not.toBeNull();
+  expect(buttonSent!.callbackData).toBe("start_onboarding");
+  expect(team.children[100]).toEqual({
+    chatId: 100, name: "Саша", joinedAt: now().toISOString(),
+    facts: {}, days: [], streak: 0, cards: [], totalStars: 0,
+  });
+  expect(sent.some((t) => t.includes("Приятно познакомиться, Саша"))).toBe(true);
+  waitForSpy.mockRestore();
+});
+
+test("runOnboarding silently ends the dialog on a wrong code, nothing registered", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("WRONG-CODE");
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 100);
+
+  expect(team.children[100]).toBeUndefined();
+});
+
+test("runOnboarding ends silently if the button is never pressed in time", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor").mockResolvedValueOnce(null);
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 100);
+
+  expect(team.children[100]).toBeUndefined();
+});
+
+test("runOnboarding ends silently if no code arrives in time after the button is pressed", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce(null);
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 500);
+
+  expect(team.children[500]).toBeUndefined();
+});
+
+test("runOnboarding re-prompts once for an invalid name, then registers on a valid retry", async () => {
+  const sent: string[] = [];
+  const tg = fakeTelegram({
+    sendMessage: async (_chatId: number | string, text: string) => {
+      sent.push(text);
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("MURR2026")
+    .mockResolvedValueOnce("   ")
+    .mockResolvedValueOnce("Женя");
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 200);
+
+  expect(team.children[200]?.name).toBe("Женя");
+  expect(sent.some((t) => t.includes("попробуй короче"))).toBe(true);
+});
+
+test("runOnboarding gives up silently after a second invalid name", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("MURR2026")
+    .mockResolvedValueOnce("")
+    .mockResolvedValueOnce("a".repeat(31));
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 300);
+
+  expect(team.children[300]).toBeUndefined();
+});
+
+test("runOnboarding skips the whole dialog for an already-registered chatId", async () => {
+  const sent: string[] = [];
+  const tg = fakeTelegram({
+    sendMessage: async (_chatId: number | string, text: string) => {
+      sent.push(text);
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  const waitForSpy = vi.spyOn(poller, "waitFor");
+  const team = emptyTeamState();
+  team.children[400] = emptyChildProgress(400, "Саша", "2026-01-01");
+
+  await runOnboarding(poller, tg, team, "MURR2026", 400);
+
+  expect(waitForSpy).not.toHaveBeenCalled();
+  expect(sent).toEqual(["Ты уже в команде! 🐾 До следующей тренировки."]);
+});
+
+test("runOnboarding trims surrounding whitespace from the code before comparing", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("  MURR2026  ")
+    .mockResolvedValueOnce("Саша");
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 600);
+
+  expect(team.children[600]?.name).toBe("Саша");
+});
+
+test("OnboardingTracker.start runs the given async function", async () => {
+  const tracker = new OnboardingTracker();
+  let ran = false;
+  tracker.start(1, async () => {
+    ran = true;
+  });
+  await tracker.waitForAll();
+  expect(ran).toBe(true);
+});
+
+test("OnboardingTracker.start ignores a second call for the same chatId while the first is still pending", async () => {
+  const tracker = new OnboardingTracker();
+  let runCount = 0;
+  const run = async () => {
+    runCount++;
+    await new Promise((r) => setTimeout(r, 20));
+  };
+  tracker.start(1, run);
+  tracker.start(1, run); // тот же chatId, диалог уже идёт — игнорируется
+  await tracker.waitForAll();
+  expect(runCount).toBe(1);
+});
+
+test("OnboardingTracker.start allows a new dialog for the same chatId after the previous one finished", async () => {
+  const tracker = new OnboardingTracker();
+  let runCount = 0;
+  const run = async () => {
+    runCount++;
+  };
+  tracker.start(1, run);
+  await tracker.waitForAll();
+  tracker.start(1, run); // предыдущий диалог для chatId 1 уже завершился — новый разрешён
+  await tracker.waitForAll();
+  expect(runCount).toBe(2);
+});
+
+// settlePollerCycles: normal operation, no failures — must give the poller the
+// requested number of extra cycles, checking onboarding.waitForAll() after each one.
+test("settlePollerCycles calls waitForCurrentCycle and onboarding.waitForAll the requested number of times", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  const waitForCurrentCycleSpy = vi.spyOn(poller, "waitForCurrentCycle").mockResolvedValue(undefined);
+  const onboarding = new OnboardingTracker();
+  const waitForAllSpy = vi.spyOn(onboarding, "waitForAll").mockResolvedValue(undefined);
+
+  await settlePollerCycles(poller, onboarding, 3);
+
+  expect(waitForCurrentCycleSpy).toHaveBeenCalledTimes(3);
+  expect(waitForAllSpy).toHaveBeenCalledTimes(3);
+});
+
+// Issue 1 regression guard: settlePollerCycles must isolate a poller failure during the
+// settle window exactly like runPoller/runChildSlotSafely/handleUnmatchedSafely do elsewhere
+// in this file — an unguarded rejection here would propagate out of main() and skip
+// poller.stop()/saveTeamState() for the WHOLE run, discarding every child's progress.
+test("settlePollerCycles stops early and still resolves if waitForCurrentCycle rejects partway through", async () => {
+  const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  const waitForCurrentCycleSpy = vi
+    .spyOn(poller, "waitForCurrentCycle")
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(new Error("network hiccup"))
+    .mockResolvedValueOnce(undefined); // must never be reached — loop should stop at the rejection
+  const onboarding = new OnboardingTracker();
+  const waitForAllSpy = vi.spyOn(onboarding, "waitForAll").mockResolvedValue(undefined);
+
+  await expect(settlePollerCycles(poller, onboarding, 5)).resolves.toBeUndefined();
+
+  expect(waitForCurrentCycleSpy).toHaveBeenCalledTimes(2); // 1 success + 1 failure, then stopped
+  expect(waitForAllSpy).toHaveBeenCalledTimes(1); // only after the successful first cycle
+  expect(consoleErrorSpy).toHaveBeenCalledWith(
+    "Poller cycle failed while settling onboarding dialogs:",
+    expect.any(Error),
+  );
+
+  consoleErrorSpy.mockRestore();
+});
+
+// REGRESSION (deeper than the OnboardingTracker fix in d5f6390): reproduces the
+// scenario from the whole-branch review end-to-end with the REAL TelegramPoller +
+// OnboardingTracker + handleUnmatchedSafely, wired together exactly like main() does.
+//
+// The bug this guards against is NOT "onboarding.pending is already populated by the
+// time waitForAll() is checked" (that part was fixed by OnboardingTracker itself) — it's
+// that main() can reach `await onboarding.waitForAll()` FASTER than the poller's very
+// first getUpdates() round-trip, when dueChildren is empty (the common case: a routine
+// cron tick where every already-registered child already trained this slot). At that
+// instant onboarding.pending is genuinely empty — not because there's nothing to wait
+// for, but because the poller hasn't even fetched its first batch yet. waitForAll()'s
+// `while (pending.size > 0)` can't wait for something that hasn't been registered.
+// main() falls through to poller.stop() before the in-flight pollOnce() has a chance to
+// dispatch — and once stopped=true is observed, run()'s loop exits after that ONE cycle
+// and never polls again, so nothing delivered in a LATER batch (e.g. the new child's
+// button press) can ever be fetched.
+//
+// getUpdates has a REAL setTimeout delay (mirroring actual network latency) — critical:
+// without it, dueChildren-empty's `await Promise.all([])` and getUpdates's resolution
+// would race only on microtask timing, which doesn't reliably reproduce the bug.
+test("REGRESSION: dueChildren empty + real getUpdates latency — a fresh child's message must not be lost when the poller shuts down", async () => {
+  const NEW_CHILD_CHAT_ID = 777;
+  let getUpdatesCallCount = 0;
+  const tg = fakeTelegram({
+    getUpdates: async () => {
+      getUpdatesCallCount++;
+      await new Promise((r) => setTimeout(r, 10)); // настоящая сетевая задержка
+      if (getUpdatesCallCount === 1) {
+        return [
+          {
+            update_id: 1,
+            message: {
+              message_id: 1,
+              date: Math.floor(Date.now() / 1000),
+              text: "/start",
+              chat: { id: NEW_CHILD_CHAT_ID },
+            },
+          },
+        ];
+      }
+      return [];
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  // waitFor замокан, чтобы диалог знакомства не завис на реальном 5-минутном
+  // таймауте ONBOARDING_STEP_MINUTES — тесту важно только, что он был ВЫЗВАН
+  // (сообщение дошло до регистрации ожидания), а не как долго он ждёт ответа.
+  const waitForSpy = vi.spyOn(poller, "waitFor").mockResolvedValue(null);
+  const team = emptyTeamState();
+  const onboarding = new OnboardingTracker();
+
+  const pollerDone = runPoller(poller, (msg) => {
+    onboarding.start(msg.chatId, () => handleUnmatchedSafely(team, "MURR2026", tg, poller, msg));
+  });
+
+  // dueChildren пуст в этом запуске — main() доходит сюда почти мгновенно
+  await Promise.all([]);
+
+  // === Исправленная последовательность остановки из main() ===
+  await poller.waitForCurrentCycle();
+  await onboarding.waitForAll();
+  poller.stop();
+  await pollerDone;
+  // ============================================================
+
+  // Сообщение действительно дошло до диалога знакомства (не потеряно при диспетчеризации).
+  expect(waitForSpy).toHaveBeenCalledWith(NEW_CHILD_CHAT_ID, expect.any(Number));
+  // И — главное для ЭТОГО бага — поллер не остановился после РОВНО одного цикла:
+  // run()'s while-петля успела перепроверить `stopped` и начать следующий цикл ДО
+  // того, как main() вообще вызвал poller.stop(). Именно это раньше не выполнялось:
+  // ревьюер эмпирически показал, что без фикса getUpdates вызывается РОВНО один раз
+  // за весь прогон, даже когда в первой же пачке уже пришло новое сообщение.
+  expect(getUpdatesCallCount).toBeGreaterThan(1);
+});
+
+// REGRESSION (Issue 2 — extends the test above): getUpdates is a genuine long-poll
+// (timeout 20s in production). If nothing has arrived yet when a given getUpdates() call
+// is made, it can legitimately return EMPTY, and the child's actual message only shows up
+// on a LATER cycle. Waiting for just "the current cycle" once (the single
+// poller.waitForCurrentCycle() call from the previous fix) is not guaranteed to cover this
+// — the fix under test is settlePollerCycles, which gives the poller several extra cycles.
+//
+// The message here is placed on the THIRD getUpdates() call (empty on the 1st and 2nd), not
+// the second. This was verified empirically, not assumed: a message on the *second* call
+// turned out to be caught even with only 1 settle cycle, because TelegramPoller.run()'s own
+// while-loop always reacts to a cycle's completion before settlePollerCycles's corresponding
+// await does (its reaction was registered earlier, and Promise reactions fire in
+// registration order) — so run() has already kicked off the NEXT cycle by the time
+// settlePollerCycles could call poller.stop(), and stop() can't cancel a cycle already in
+// flight, only prevent a new one from starting. That gives even a single-cycle settle one
+// "free" extra cycle in flight. The third cycle is the first one this freebie does NOT
+// cover, so it's the actual boundary that distinguishes "waited 1 cycle" from "waited 3".
+//
+// getUpdates has a REAL setTimeout delay for the same reason as the test above: it makes
+// the cycle-to-cycle handoff reproduce deterministically instead of racing on microtask
+// timing alone.
+test("REGRESSION (Issue 2): message arrives on the THIRD poll cycle (two empty cycles first) — settlePollerCycles's multi-cycle grace period must still catch it", async () => {
+  const NEW_CHILD_CHAT_ID = 888;
+  let getUpdatesCallCount = 0;
+  const tg = fakeTelegram({
+    getUpdates: async () => {
+      getUpdatesCallCount++;
+      await new Promise((r) => setTimeout(r, 10)); // настоящая сетевая задержка
+      if (getUpdatesCallCount === 3) {
+        return [
+          {
+            update_id: 1,
+            message: {
+              message_id: 1,
+              date: Math.floor(Date.now() / 1000),
+              text: "/start",
+              chat: { id: NEW_CHILD_CHAT_ID },
+            },
+          },
+        ];
+      }
+      return []; // 1-й и 2-й циклы — пусто, как настоящий long-poll без апдейтов
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  const waitForSpy = vi.spyOn(poller, "waitFor").mockResolvedValue(null);
+  const team = emptyTeamState();
+  const onboarding = new OnboardingTracker();
+
+  const pollerDone = runPoller(poller, (msg) => {
+    onboarding.start(msg.chatId, () => handleUnmatchedSafely(team, "MURR2026", tg, poller, msg));
+  });
+
+  // dueChildren пуст в этом запуске — main() доходит сюда почти мгновенно
+  await Promise.all([]);
+
+  // === Реальная последовательность остановки из main() ===
+  // ONBOARDING_SETTLE_CYCLES в src/index.ts сейчас равен 3 — здесь захардкожено то же
+  // значение (константа не экспортируется), намеренно совпадая с реальной, а не
+  // произвольно выбрано для теста.
+  await settlePollerCycles(poller, onboarding, 3);
+  poller.stop();
+  await pollerDone;
+  // ==========================================================
+
+  // Сообщение с ТРЕТЬЕГО цикла всё равно дошло до диалога знакомства.
+  expect(waitForSpy).toHaveBeenCalledWith(NEW_CHILD_CHAT_ID, expect.any(Number));
+  // И поллер реально проработал минимум 3 цикла (два пустых + тот, что доставил сообщение).
+  expect(getUpdatesCallCount).toBeGreaterThanOrEqual(3);
+});
+
+// REGRESSION (Issue 2 — negative counterpart to the test above): proves the grace
+// period is not vacuous. The SAME third-cycle-only message must NOT be caught when
+// settlePollerCycles is only given 1 cycle — the old, insufficient value before this
+// branch's fix. Identical fixture to the test above (message empty on cycles 1-2,
+// delivered on cycle 3); the only difference is the `cycles` argument passed to
+// settlePollerCycles (1 instead of 3) and the inverted assertion on waitForSpy.
+test("REGRESSION (Issue 2, negative case): message arriving on the THIRD poll cycle is NOT caught when settlePollerCycles only gets 1 cycle", async () => {
+  const NEW_CHILD_CHAT_ID = 999;
+  let getUpdatesCallCount = 0;
+  const tg = fakeTelegram({
+    getUpdates: async () => {
+      getUpdatesCallCount++;
+      await new Promise((r) => setTimeout(r, 10)); // настоящая сетевая задержка
+      if (getUpdatesCallCount === 3) {
+        return [
+          {
+            update_id: 1,
+            message: {
+              message_id: 1,
+              date: Math.floor(Date.now() / 1000),
+              text: "/start",
+              chat: { id: NEW_CHILD_CHAT_ID },
+            },
+          },
+        ];
+      }
+      return []; // 1-й и 2-й циклы — пусто, как настоящий long-poll без апдейтов
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  const waitForSpy = vi.spyOn(poller, "waitFor").mockResolvedValue(null);
+  const team = emptyTeamState();
+  const onboarding = new OnboardingTracker();
+
+  const pollerDone = runPoller(poller, (msg) => {
+    onboarding.start(msg.chatId, () => handleUnmatchedSafely(team, "MURR2026", tg, poller, msg));
+  });
+
+  // dueChildren пуст в этом запуске — main() доходит сюда почти мгновенно
+  await Promise.all([]);
+
+  // === Старая, недостаточная последовательность остановки: всего 1 цикл ожидания ===
+  await settlePollerCycles(poller, onboarding, 1);
+  poller.stop();
+  await pollerDone;
+  // ===================================================================================
+
+  // Сообщение с ТРЕТЬЕГО цикла НЕ дошло до диалога знакомства — одного цикла недостаточно.
+  expect(waitForSpy).not.toHaveBeenCalled();
+});
+
+test("OnboardingTracker.waitForAll also waits for dialogs that start while it's already draining", async () => {
+  const tracker = new OnboardingTracker();
+  let bFinished = false;
+  tracker.start(1, async () => {
+    await new Promise((r) => setTimeout(r, 5));
+    // диалог 1 уже какое-то время идёт (waitForAll уже ждёт его), и только теперь
+    // "приходит" ещё один незарегистрированный ребёнок (chatId 2) — новый диалог
+    // должен попасть в ожидание, а не быть пропущенным уже сделанным снепшотом
+    tracker.start(2, async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      bFinished = true;
+    });
+  });
+  await tracker.waitForAll();
+  expect(bFinished).toBe(true);
 });
