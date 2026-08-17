@@ -48,8 +48,25 @@ export class Telegram {
     if (!data.ok) throw new Error(`Telegram sendPhoto: ${data.description}`);
   }
 
+  async answerCallbackQuery(callbackQueryId: string): Promise<void> {
+    await this.call("answerCallbackQuery", { callback_query_id: callbackQueryId });
+  }
+
+  async sendMessageWithButton(
+    chatId: number | string,
+    text: string,
+    buttonText: string,
+    callbackData: string,
+  ): Promise<void> {
+    await this.call("sendMessage", {
+      chat_id: chatId,
+      text,
+      reply_markup: { inline_keyboard: [[{ text: buttonText, callback_data: callbackData }]] },
+    });
+  }
+
   getUpdates(offset: number, timeoutSec: number): Promise<Update[]> {
-    return this.call("getUpdates", { offset, timeout: timeoutSec, allowed_updates: ["message"] });
+    return this.call("getUpdates", { offset, timeout: timeoutSec, allowed_updates: ["message", "callback_query"] });
   }
 }
 
