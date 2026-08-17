@@ -13,6 +13,14 @@
           "attemptedSlots": [
             "evening"
           ]
+        },
+        {
+          "date": "2026-08-17",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "morning"
+          ]
         }
       ],
       "streak": 0,
@@ -1227,6 +1235,14 @@
             "midday",
             "evening"
           ]
+        },
+        {
+          "date": "2026-08-17",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "morning"
+          ]
         }
       ],
       "streak": 0,
@@ -1250,7 +1266,7 @@
     }
   },
   "weeklyGoal": {
-    "weekStart": "2026-08-10",
+    "weekStart": "2026-08-17",
     "trophyAwarded": false
   },
   "trophyCards": [],
