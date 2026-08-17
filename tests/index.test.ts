@@ -562,6 +562,57 @@ test("REGRESSION (Issue 2): message arrives on the THIRD poll cycle (two empty c
   expect(getUpdatesCallCount).toBeGreaterThanOrEqual(3);
 });
 
+// REGRESSION (Issue 2 — negative counterpart to the test above): proves the grace
+// period is not vacuous. The SAME third-cycle-only message must NOT be caught when
+// settlePollerCycles is only given 1 cycle — the old, insufficient value before this
+// branch's fix. Identical fixture to the test above (message empty on cycles 1-2,
+// delivered on cycle 3); the only difference is the `cycles` argument passed to
+// settlePollerCycles (1 instead of 3) and the inverted assertion on waitForSpy.
+test("REGRESSION (Issue 2, negative case): message arriving on the THIRD poll cycle is NOT caught when settlePollerCycles only gets 1 cycle", async () => {
+  const NEW_CHILD_CHAT_ID = 999;
+  let getUpdatesCallCount = 0;
+  const tg = fakeTelegram({
+    getUpdates: async () => {
+      getUpdatesCallCount++;
+      await new Promise((r) => setTimeout(r, 10)); // настоящая сетевая задержка
+      if (getUpdatesCallCount === 3) {
+        return [
+          {
+            update_id: 1,
+            message: {
+              message_id: 1,
+              date: Math.floor(Date.now() / 1000),
+              text: "/start",
+              chat: { id: NEW_CHILD_CHAT_ID },
+            },
+          },
+        ];
+      }
+      return []; // 1-й и 2-й циклы — пусто, как настоящий long-poll без апдейтов
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  const waitForSpy = vi.spyOn(poller, "waitFor").mockResolvedValue(null);
+  const team = emptyTeamState();
+  const onboarding = new OnboardingTracker();
+
+  const pollerDone = runPoller(poller, (msg) => {
+    onboarding.start(msg.chatId, () => handleUnmatchedSafely(team, "MURR2026", tg, poller, msg));
+  });
+
+  // dueChildren пуст в этом запуске — main() доходит сюда почти мгновенно
+  await Promise.all([]);
+
+  // === Старая, недостаточная последовательность остановки: всего 1 цикл ожидания ===
+  await settlePollerCycles(poller, onboarding, 1);
+  poller.stop();
+  await pollerDone;
+  // ===================================================================================
+
+  // Сообщение с ТРЕТЬЕГО цикла НЕ дошло до диалога знакомства — одного цикла недостаточно.
+  expect(waitForSpy).not.toHaveBeenCalled();
+});
+
 test("OnboardingTracker.waitForAll also waits for dialogs that start while it's already draining", async () => {
   const tracker = new OnboardingTracker();
   let bFinished = false;
