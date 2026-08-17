@@ -7,7 +7,7 @@ import {
   awardBonusCard, ensureCurrentWeek, finishDay, finishWeek, recordSession, rollSessionCard, starsForSession,
 } from "./rewards.js";
 import { rarityLabel, type Card } from "./cards.js";
-import { tryJoin } from "./registration.js";
+import { registerChild, validateName } from "./registration.js";
 import { runSession } from "./session.js";
 import {
   cardsWonToday, getDay, hasAttemptedSlot, loadTeamState, markSlotAttempted, saveTeamState,
@@ -60,6 +60,8 @@ const QUESTIONS = 10;
 const WINDOW_MINUTES = 60;
 const BONUS_QUESTIONS = 5;
 const BONUS_WINDOW_MINUTES = 20;
+const ONBOARDING_STEP_MINUTES = 5;
+const START_CALLBACK_DATA = "start_onboarding";
 
 async function announceCard(tg: Telegram, chatId: number, card: Card, title: string): Promise<void> {
   const caption =
@@ -147,17 +149,66 @@ export function runChildSlotSafely(
   });
 }
 
-async function handleUnmatched(team: TeamState, inviteCode: string, tg: Telegram, msg: DeliveredMessage): Promise<void> {
-  const result = tryJoin(team, msg.text, inviteCode, msg.chatId, msg.fromName, new Date());
-  if (result.kind === "welcome") {
-    await tg.sendMessage(
-      msg.chatId,
-      `🐾 Добро пожаловать в команду, ${result.name}! Первая тренировка — на ближайшем окне (14:00 / 17:00 / 19:00 по Кипру).`,
-    );
-  } else if (result.kind === "already-member") {
-    await tg.sendMessage(msg.chatId, "Ты уже в команде! 🐾 До следующей тренировки.");
+// Диалог знакомства для НЕзарегистрированного chatId: приветствие с кнопкой →
+// код-приглашение → имя → профиль создан. Каждый шаг ждёт ответа тем же
+// waitFor, что и обычные тренировочные сессии (см. PolledIO) — просто без
+// PolledIO, так как здесь не нужен единый "плавающий" дедлайн, у каждого шага
+// свой фиксированный таймаут. Неверный код или дважды невалидное имя —
+// диалог тихо завершается: тот же принцип, что был у /join — не подсказываем
+// постороннему, что именно не так.
+export async function runOnboarding(
+  poller: TelegramPoller,
+  tg: Telegram,
+  team: TeamState,
+  inviteCode: string,
+  chatId: number,
+  now: () => Date = () => new Date(),
+): Promise<void> {
+  if (team.children[chatId]) {
+    await tg.sendMessage(chatId, "Ты уже в команде! 🐾 До следующей тренировки.");
+    return;
   }
-  // "wrong-code" — молчим: не подсказываем постороннему, что не так.
+
+  await tg.sendMessageWithButton(
+    chatId,
+    "🐱 Привет! Я бот «Мур-математика» — помогаю тренировать таблицу умножения и собирать карточки с котиками. Готов(а) начать?",
+    "🐾 Старт",
+    START_CALLBACK_DATA,
+  );
+  const started = await poller.waitFor(chatId, ONBOARDING_STEP_MINUTES * 60_000);
+  if (started !== START_CALLBACK_DATA) return;
+
+  await tg.sendMessage(chatId, "Отлично! Введи код-приглашения, который тебе дали:");
+  const code = await poller.waitFor(chatId, ONBOARDING_STEP_MINUTES * 60_000);
+  if (code === null || code.trim() !== inviteCode) return;
+
+  await tg.sendMessage(chatId, "Ура, код верный! 🎉 А как тебя зовут?");
+  let name: string | null = null;
+  for (let attempt = 0; attempt < 2 && name === null; attempt++) {
+    const reply = await poller.waitFor(chatId, ONBOARDING_STEP_MINUTES * 60_000);
+    if (reply === null) return;
+    name = validateName(reply);
+    if (name === null && attempt === 0) {
+      await tg.sendMessage(chatId, "Хм, попробуй короче и без лишнего, например «Саша» 🙂");
+    }
+  }
+  if (name === null) return;
+
+  registerChild(team, chatId, name, now());
+  await tg.sendMessage(
+    chatId,
+    `Приятно познакомиться, ${name}! 🐾 Ты в команде «Мур-математика». Первая тренировка — на ближайшем окне (14:00 / 17:00 / 19:00 по Кипру).`,
+  );
+}
+
+async function handleUnmatched(
+  team: TeamState,
+  inviteCode: string,
+  tg: Telegram,
+  poller: TelegramPoller,
+  msg: DeliveredMessage,
+): Promise<void> {
+  await runOnboarding(poller, tg, team, inviteCode, msg.chatId);
 }
 
 // Изолирует handleUnmatched: он вызывается синхронно, фоново, из поллера
@@ -169,9 +220,10 @@ export function handleUnmatchedSafely(
   team: TeamState,
   inviteCode: string,
   tg: Telegram,
+  poller: TelegramPoller,
   msg: DeliveredMessage,
 ): Promise<void> {
-  return handleUnmatched(team, inviteCode, tg, msg).catch((err) => {
+  return handleUnmatched(team, inviteCode, tg, poller, msg).catch((err) => {
     console.error(`handleUnmatched failed for chatId ${msg.chatId}:`, err);
   });
 }
@@ -237,7 +289,7 @@ async function main(): Promise<void> {
   const tg = new Telegram(token);
   const poller = new TelegramPoller(tg);
   const pollerDone = runPoller(poller, (msg) => {
-    void handleUnmatchedSafely(team, inviteCode, tg, msg);
+    void handleUnmatchedSafely(team, inviteCode, tg, poller, msg);
   });
 
   const dueChildren = Object.values(team.children).filter((child) => {

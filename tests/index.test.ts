@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 import {
-  activeSlot, handleUnmatchedSafely, runChildSlot, runChildSlotSafely, runEveningWrapUp, runPoller,
+  activeSlot, handleUnmatchedSafely, runChildSlot, runChildSlotSafely, runEveningWrapUp, runOnboarding, runPoller,
 } from "../src/index.js";
 import { TelegramPoller, type DeliveredMessage, type Telegram } from "../src/telegram.js";
 import { emptyChildProgress, emptyTeamState, getDay } from "../src/state.js";
@@ -25,6 +25,7 @@ function fakeTelegram(overrides: Partial<Telegram> = {}): Telegram {
     getUpdates: async () => [],
     sendMessage: async () => {},
     sendPhoto: async () => {},
+    sendMessageWithButton: async () => {},
     ...overrides,
   } as unknown as Telegram;
 }
@@ -59,14 +60,15 @@ test("runPoller absorbs a TelegramPoller.run() rejection instead of leaving it t
 test("handleUnmatchedSafely absorbs a handleUnmatched rejection instead of leaving it to reject", async () => {
   const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   const tg = fakeTelegram({
-    sendMessage: async () => {
+    sendMessageWithButton: async () => {
       throw new Error("Forbidden: bot was blocked by the user");
     },
   });
+  const poller = new TelegramPoller(tg, 0);
   const team = emptyTeamState();
-  const msg: DeliveredMessage = { chatId: 555, text: "/join SASHA2026", fromName: "Тест" };
+  const msg: DeliveredMessage = { chatId: 555, text: "/start", fromName: "Тест" };
 
-  const result = handleUnmatchedSafely(team, "SASHA2026", tg, msg);
+  const result = handleUnmatchedSafely(team, "SASHA2026", tg, poller, msg);
 
   await expect(result).resolves.toBeUndefined();
   expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -190,4 +192,146 @@ test("runEveningWrapUp isolates a failed parent report send instead of throwing"
   expect(consoleErrorSpy).toHaveBeenCalledWith("Team report send to parent failed:", expect.any(Error));
 
   consoleErrorSpy.mockRestore();
+});
+
+test("runOnboarding walks a new child through button, code, and name to registration", async () => {
+  const sent: string[] = [];
+  let buttonSent: { text: string; buttonText: string; callbackData: string } | null = null;
+  const tg = fakeTelegram({
+    sendMessage: async (_chatId: number | string, text: string) => {
+      sent.push(text);
+    },
+    sendMessageWithButton: async (
+      _chatId: number | string,
+      text: string,
+      buttonText: string,
+      callbackData: string,
+    ) => {
+      buttonSent = { text, buttonText, callbackData };
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  const waitForSpy = vi
+    .spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("MURR2026")
+    .mockResolvedValueOnce("Саша");
+  const team = emptyTeamState();
+  const now = () => new Date("2026-08-17T12:00:00Z");
+
+  await runOnboarding(poller, tg, team, "MURR2026", 100, now);
+
+  expect(buttonSent).not.toBeNull();
+  expect(buttonSent!.callbackData).toBe("start_onboarding");
+  expect(team.children[100]).toEqual({
+    chatId: 100, name: "Саша", joinedAt: now().toISOString(),
+    facts: {}, days: [], streak: 0, cards: [], totalStars: 0,
+  });
+  expect(sent.some((t) => t.includes("Приятно познакомиться, Саша"))).toBe(true);
+  waitForSpy.mockRestore();
+});
+
+test("runOnboarding silently ends the dialog on a wrong code, nothing registered", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("WRONG-CODE");
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 100);
+
+  expect(team.children[100]).toBeUndefined();
+});
+
+test("runOnboarding ends silently if the button is never pressed in time", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor").mockResolvedValueOnce(null);
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 100);
+
+  expect(team.children[100]).toBeUndefined();
+});
+
+test("runOnboarding ends silently if no code arrives in time after the button is pressed", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce(null);
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 500);
+
+  expect(team.children[500]).toBeUndefined();
+});
+
+test("runOnboarding re-prompts once for an invalid name, then registers on a valid retry", async () => {
+  const sent: string[] = [];
+  const tg = fakeTelegram({
+    sendMessage: async (_chatId: number | string, text: string) => {
+      sent.push(text);
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("MURR2026")
+    .mockResolvedValueOnce("   ")
+    .mockResolvedValueOnce("Женя");
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 200);
+
+  expect(team.children[200]?.name).toBe("Женя");
+  expect(sent.some((t) => t.includes("попробуй короче"))).toBe(true);
+});
+
+test("runOnboarding gives up silently after a second invalid name", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("MURR2026")
+    .mockResolvedValueOnce("")
+    .mockResolvedValueOnce("a".repeat(31));
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 300);
+
+  expect(team.children[300]).toBeUndefined();
+});
+
+test("runOnboarding skips the whole dialog for an already-registered chatId", async () => {
+  const sent: string[] = [];
+  const tg = fakeTelegram({
+    sendMessage: async (_chatId: number | string, text: string) => {
+      sent.push(text);
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  const waitForSpy = vi.spyOn(poller, "waitFor");
+  const team = emptyTeamState();
+  team.children[400] = emptyChildProgress(400, "Саша", "2026-01-01");
+
+  await runOnboarding(poller, tg, team, "MURR2026", 400);
+
+  expect(waitForSpy).not.toHaveBeenCalled();
+  expect(sent).toEqual(["Ты уже в команде! 🐾 До следующей тренировки."]);
+});
+
+test("runOnboarding trims surrounding whitespace from the code before comparing", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  vi.spyOn(poller, "waitFor")
+    .mockResolvedValueOnce("start_onboarding")
+    .mockResolvedValueOnce("  MURR2026  ")
+    .mockResolvedValueOnce("Саша");
+  const team = emptyTeamState();
+
+  await runOnboarding(poller, tg, team, "MURR2026", 600);
+
+  expect(team.children[600]?.name).toBe("Саша");
 });
