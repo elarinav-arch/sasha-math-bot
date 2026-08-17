@@ -9,6 +9,18 @@ function upd(id: number, chatId: number, text: string, dateSec: number, firstNam
   };
 }
 
+function cbUpd(id: number, chatId: number, data?: string, firstName?: string): Update {
+  return {
+    update_id: id,
+    callback_query: {
+      id: `cb${id}`,
+      data,
+      from: firstName ? { first_name: firstName } : undefined,
+      message: { chat: { id: chatId } },
+    },
+  };
+}
+
 function fakeTelegram(getUpdates: () => Promise<Update[]>): Telegram {
   return { getUpdates } as unknown as Telegram;
 }
@@ -50,6 +62,38 @@ test("empty batch returns offset 0 and no deliveries", () => {
 
 test("missing sender name falls back to a friendly default", () => {
   const r = dispatchUpdates([upd(10, 100, "/join X", 1000)], 0);
+  expect(r.delivered[0].fromName).toBe("друг");
+});
+
+test("dispatchUpdates delivers a callback_query's data as the message text", () => {
+  const r = dispatchUpdates([cbUpd(20, 300, "start_onboarding", "Саша")], 0);
+  expect(r.offset).toBe(21);
+  expect(r.delivered).toEqual([{ chatId: 300, text: "start_onboarding", fromName: "Саша" }]);
+});
+
+test("dispatchUpdates routes a mixed batch of message and callback_query updates", () => {
+  const updates = [upd(10, 100, "6", 1000, "Женя"), cbUpd(11, 200, "start_onboarding", "Саша")];
+  const r = dispatchUpdates(updates, 0);
+  expect(r.delivered).toEqual([
+    { chatId: 100, text: "6", fromName: "Женя" },
+    { chatId: 200, text: "start_onboarding", fromName: "Саша" },
+  ]);
+});
+
+test("dispatchUpdates skips a callback_query with no data, offset still advances", () => {
+  const r = dispatchUpdates([cbUpd(30, 400)], 0);
+  expect(r.delivered).toEqual([]);
+  expect(r.offset).toBe(31);
+});
+
+test("dispatchUpdates delivers only the first interaction per chat even across message/callback_query in one batch", () => {
+  const updates = [cbUpd(40, 500, "start_onboarding"), upd(41, 500, "MURR2026", 1000)];
+  const r = dispatchUpdates(updates, 0);
+  expect(r.delivered).toEqual([{ chatId: 500, text: "start_onboarding", fromName: "друг" }]);
+});
+
+test("dispatchUpdates missing callback_query sender name falls back to a friendly default", () => {
+  const r = dispatchUpdates([cbUpd(50, 600, "start_onboarding")], 0);
   expect(r.delivered[0].fromName).toBe("друг");
 });
 

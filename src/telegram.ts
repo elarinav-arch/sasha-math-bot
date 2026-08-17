@@ -12,6 +12,12 @@ export interface Update {
     chat: { id: number };
     from?: { first_name?: string };
   };
+  callback_query?: {
+    id: string;
+    data?: string;
+    from?: { first_name?: string };
+    message?: { chat: { id: number } };
+  };
 }
 
 export class Telegram {
@@ -57,6 +63,12 @@ export interface DeliveredMessage {
 // не только один конкретный chatId, как раньше в nextReply, а сразу все.
 // В пределах одной пачки от одного чата доставляется только первое сообщение
 // (та же семантика, что была у nextReply — офсет всё равно продвигается за всю пачку).
+// Нажатие inline-кнопки (callback_query) нормализуется в тот же DeliveredMessage,
+// что и обычный текст — text становится данными кнопки (callback_data). Так
+// TelegramPoller.waitFor не должен ничего знать про разницу между "написал"
+// и "нажал кнопку" — это уже сделано на уровне диспетчеризации. У callback_query
+// нет своего времени отправки (Telegram его не присылает), поэтому фильтр
+// notBeforeMs к нему не применяется — нажатие кнопки всегда актуально.
 export function dispatchUpdates(
   updates: Update[],
   notBeforeMs: number,
@@ -67,10 +79,17 @@ export function dispatchUpdates(
   for (const u of updates) {
     offset = Math.max(offset, u.update_id + 1);
     const m = u.message;
-    if (!m?.text || seen.has(m.chat.id)) continue;
-    if (m.date * 1000 < notBeforeMs) continue; // старое сообщение из очереди вне окна
-    seen.add(m.chat.id);
-    delivered.push({ chatId: m.chat.id, text: m.text, fromName: m.from?.first_name ?? "друг" });
+    if (m?.text && !seen.has(m.chat.id) && m.date * 1000 >= notBeforeMs) {
+      seen.add(m.chat.id);
+      delivered.push({ chatId: m.chat.id, text: m.text, fromName: m.from?.first_name ?? "друг" });
+      continue;
+    }
+    const cq = u.callback_query;
+    const cqChatId = cq?.message?.chat.id;
+    if (cq?.data && cqChatId !== undefined && !seen.has(cqChatId)) {
+      seen.add(cqChatId);
+      delivered.push({ chatId: cqChatId, text: cq.data, fromName: cq.from?.first_name ?? "друг" });
+    }
   }
   return { offset, delivered };
 }
