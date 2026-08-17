@@ -129,6 +129,19 @@ export class TelegramPoller {
 
   async pollOnce(onUnmatched: (msg: DeliveredMessage) => void): Promise<void> {
     const updates = await this.tg.getUpdates(this.offset, 20);
+    // Telegram требует явного ответа на КАЖДЫЙ callback_query, иначе кнопка у
+    // ребёнка в клиенте вечно показывает "крутилку". await + .catch (а не
+    // fire-and-forget) — тот же защитный паттерн, что и везде в этом файле:
+    // необработанный reject здесь стал бы unhandled rejection и уронил бы
+    // весь процесс (тот же класс бага, что уже чинили в runPoller/
+    // runChildSlotSafely/handleUnmatchedSafely в index.ts).
+    for (const u of updates) {
+      if (u.callback_query) {
+        await this.tg.answerCallbackQuery(u.callback_query.id).catch((err) => {
+          console.error(`answerCallbackQuery failed for ${u.callback_query!.id}:`, err);
+        });
+      }
+    }
     const { offset, delivered } = dispatchUpdates(updates, this.startedAtMs - 60_000);
     if (offset > this.offset) this.offset = offset;
     for (const msg of delivered) {

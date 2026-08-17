@@ -281,3 +281,40 @@ test("Telegram.getUpdates requests both message and callback_query updates from 
 
   vi.unstubAllGlobals();
 });
+
+test("pollOnce answers a callback_query so the button stops showing a loading spinner", async () => {
+  const answered: string[] = [];
+  const tg = {
+    getUpdates: async () => [cbUpd(1, 700, "start_onboarding")],
+    answerCallbackQuery: async (id: string) => {
+      answered.push(id);
+    },
+  } as unknown as Telegram;
+  const poller = new TelegramPoller(tg, 0);
+  await poller.pollOnce(() => {});
+  expect(answered).toEqual(["cb1"]);
+});
+
+test("pollOnce answers every callback_query in a batch, even ones with no data", async () => {
+  const answered: string[] = [];
+  const tg = {
+    getUpdates: async () => [cbUpd(1, 700), cbUpd(2, 800, "start_onboarding")],
+    answerCallbackQuery: async (id: string) => {
+      answered.push(id);
+    },
+  } as unknown as Telegram;
+  const poller = new TelegramPoller(tg, 0);
+  await poller.pollOnce(() => {});
+  expect(answered).toEqual(["cb1", "cb2"]);
+});
+
+test("pollOnce does not throw if answerCallbackQuery fails — same defensive pattern as elsewhere in this file", async () => {
+  const tg = {
+    getUpdates: async () => [cbUpd(1, 700, "start_onboarding")],
+    answerCallbackQuery: async () => {
+      throw new Error("Telegram API error");
+    },
+  } as unknown as Telegram;
+  const poller = new TelegramPoller(tg, 0);
+  await expect(poller.pollOnce(() => {})).resolves.toBeUndefined();
+});
