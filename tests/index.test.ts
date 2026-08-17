@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 import {
   activeSlot, handleUnmatchedSafely, OnboardingTracker, runChildSlot, runChildSlotSafely, runEveningWrapUp,
-  runOnboarding, runPoller,
+  runOnboarding, runPoller, settlePollerCycles,
 } from "../src/index.js";
 import { TelegramPoller, type DeliveredMessage, type Telegram } from "../src/telegram.js";
 import { emptyChildProgress, emptyTeamState, getDay } from "../src/state.js";
@@ -373,6 +373,49 @@ test("OnboardingTracker.start allows a new dialog for the same chatId after the 
   expect(runCount).toBe(2);
 });
 
+// settlePollerCycles: normal operation, no failures — must give the poller the
+// requested number of extra cycles, checking onboarding.waitForAll() after each one.
+test("settlePollerCycles calls waitForCurrentCycle and onboarding.waitForAll the requested number of times", async () => {
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  const waitForCurrentCycleSpy = vi.spyOn(poller, "waitForCurrentCycle").mockResolvedValue(undefined);
+  const onboarding = new OnboardingTracker();
+  const waitForAllSpy = vi.spyOn(onboarding, "waitForAll").mockResolvedValue(undefined);
+
+  await settlePollerCycles(poller, onboarding, 3);
+
+  expect(waitForCurrentCycleSpy).toHaveBeenCalledTimes(3);
+  expect(waitForAllSpy).toHaveBeenCalledTimes(3);
+});
+
+// Issue 1 regression guard: settlePollerCycles must isolate a poller failure during the
+// settle window exactly like runPoller/runChildSlotSafely/handleUnmatchedSafely do elsewhere
+// in this file — an unguarded rejection here would propagate out of main() and skip
+// poller.stop()/saveTeamState() for the WHOLE run, discarding every child's progress.
+test("settlePollerCycles stops early and still resolves if waitForCurrentCycle rejects partway through", async () => {
+  const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const tg = fakeTelegram();
+  const poller = new TelegramPoller(tg, 0);
+  const waitForCurrentCycleSpy = vi
+    .spyOn(poller, "waitForCurrentCycle")
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(new Error("network hiccup"))
+    .mockResolvedValueOnce(undefined); // must never be reached — loop should stop at the rejection
+  const onboarding = new OnboardingTracker();
+  const waitForAllSpy = vi.spyOn(onboarding, "waitForAll").mockResolvedValue(undefined);
+
+  await expect(settlePollerCycles(poller, onboarding, 5)).resolves.toBeUndefined();
+
+  expect(waitForCurrentCycleSpy).toHaveBeenCalledTimes(2); // 1 success + 1 failure, then stopped
+  expect(waitForAllSpy).toHaveBeenCalledTimes(1); // only after the successful first cycle
+  expect(consoleErrorSpy).toHaveBeenCalledWith(
+    "Poller cycle failed while settling onboarding dialogs:",
+    expect.any(Error),
+  );
+
+  consoleErrorSpy.mockRestore();
+});
+
 // REGRESSION (deeper than the OnboardingTracker fix in d5f6390): reproduces the
 // scenario from the whole-branch review end-to-end with the REAL TelegramPoller +
 // OnboardingTracker + handleUnmatchedSafely, wired together exactly like main() does.
@@ -446,6 +489,77 @@ test("REGRESSION: dueChildren empty + real getUpdates latency — a fresh child'
   // ревьюер эмпирически показал, что без фикса getUpdates вызывается РОВНО один раз
   // за весь прогон, даже когда в первой же пачке уже пришло новое сообщение.
   expect(getUpdatesCallCount).toBeGreaterThan(1);
+});
+
+// REGRESSION (Issue 2 — extends the test above): getUpdates is a genuine long-poll
+// (timeout 20s in production). If nothing has arrived yet when a given getUpdates() call
+// is made, it can legitimately return EMPTY, and the child's actual message only shows up
+// on a LATER cycle. Waiting for just "the current cycle" once (the single
+// poller.waitForCurrentCycle() call from the previous fix) is not guaranteed to cover this
+// — the fix under test is settlePollerCycles, which gives the poller several extra cycles.
+//
+// The message here is placed on the THIRD getUpdates() call (empty on the 1st and 2nd), not
+// the second. This was verified empirically, not assumed: a message on the *second* call
+// turned out to be caught even with only 1 settle cycle, because TelegramPoller.run()'s own
+// while-loop always reacts to a cycle's completion before settlePollerCycles's corresponding
+// await does (its reaction was registered earlier, and Promise reactions fire in
+// registration order) — so run() has already kicked off the NEXT cycle by the time
+// settlePollerCycles could call poller.stop(), and stop() can't cancel a cycle already in
+// flight, only prevent a new one from starting. That gives even a single-cycle settle one
+// "free" extra cycle in flight. The third cycle is the first one this freebie does NOT
+// cover, so it's the actual boundary that distinguishes "waited 1 cycle" from "waited 3".
+//
+// getUpdates has a REAL setTimeout delay for the same reason as the test above: it makes
+// the cycle-to-cycle handoff reproduce deterministically instead of racing on microtask
+// timing alone.
+test("REGRESSION (Issue 2): message arrives on the THIRD poll cycle (two empty cycles first) — settlePollerCycles's multi-cycle grace period must still catch it", async () => {
+  const NEW_CHILD_CHAT_ID = 888;
+  let getUpdatesCallCount = 0;
+  const tg = fakeTelegram({
+    getUpdates: async () => {
+      getUpdatesCallCount++;
+      await new Promise((r) => setTimeout(r, 10)); // настоящая сетевая задержка
+      if (getUpdatesCallCount === 3) {
+        return [
+          {
+            update_id: 1,
+            message: {
+              message_id: 1,
+              date: Math.floor(Date.now() / 1000),
+              text: "/start",
+              chat: { id: NEW_CHILD_CHAT_ID },
+            },
+          },
+        ];
+      }
+      return []; // 1-й и 2-й циклы — пусто, как настоящий long-poll без апдейтов
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  const waitForSpy = vi.spyOn(poller, "waitFor").mockResolvedValue(null);
+  const team = emptyTeamState();
+  const onboarding = new OnboardingTracker();
+
+  const pollerDone = runPoller(poller, (msg) => {
+    onboarding.start(msg.chatId, () => handleUnmatchedSafely(team, "MURR2026", tg, poller, msg));
+  });
+
+  // dueChildren пуст в этом запуске — main() доходит сюда почти мгновенно
+  await Promise.all([]);
+
+  // === Реальная последовательность остановки из main() ===
+  // ONBOARDING_SETTLE_CYCLES в src/index.ts сейчас равен 3 — здесь захардкожено то же
+  // значение (константа не экспортируется), намеренно совпадая с реальной, а не
+  // произвольно выбрано для теста.
+  await settlePollerCycles(poller, onboarding, 3);
+  poller.stop();
+  await pollerDone;
+  // ==========================================================
+
+  // Сообщение с ТРЕТЬЕГО цикла всё равно дошло до диалога знакомства.
+  expect(waitForSpy).toHaveBeenCalledWith(NEW_CHILD_CHAT_ID, expect.any(Number));
+  // И поллер реально проработал минимум 3 цикла (два пустых + тот, что доставил сообщение).
+  expect(getUpdatesCallCount).toBeGreaterThanOrEqual(3);
 });
 
 test("OnboardingTracker.waitForAll also waits for dialogs that start while it's already draining", async () => {

@@ -62,6 +62,7 @@ const BONUS_QUESTIONS = 5;
 const BONUS_WINDOW_MINUTES = 20;
 const ONBOARDING_STEP_MINUTES = 5;
 const START_CALLBACK_DATA = "start_onboarding";
+const ONBOARDING_SETTLE_CYCLES = 3;
 
 async function announceCard(tg: Telegram, chatId: number, card: Card, title: string): Promise<void> {
   const caption =
@@ -290,6 +291,35 @@ export async function runEveningWrapUp(
   }
 }
 
+// Даёт поллеру несколько дополнительных циклов опроса после того, как основная
+// работа этого запуска (сессии due-детей, итоги недели) закончена — чтобы
+// диалог знакомства только что написавшего ребёнка успел получить шанс на
+// ответ, прежде чем поллер остановится. Один цикл (как было раньше) не всегда
+// достаточно: getUpdates — настоящий long-poll (timeout 20с), и если на момент
+// запроса сообщение ещё не пришло, ответ будет пустым, а реальное сообщение
+// придёт только СЛЕДУЮЩИМ циклом. Несколько циклов подряд снижают вероятность
+// этого, но НЕ дают железной гарантии — теоретически сообщение может прийти
+// ещё позже. Для типичного случая (ребёнок отвечает почти сразу после
+// приветствия) этого запаса достаточно; если нет — диалог просто завершится
+// по своему собственному таймауту внутри runOnboarding, как и при обычном
+// отсутствии ответа. Ошибка поллера на любом цикле — не повод ронять весь
+// запуск: просто прекращаем ждать дальше, тот же принцип, что и у runPoller.
+export async function settlePollerCycles(
+  poller: TelegramPoller,
+  onboarding: OnboardingTracker,
+  cycles: number,
+): Promise<void> {
+  for (let i = 0; i < cycles; i++) {
+    try {
+      await poller.waitForCurrentCycle();
+    } catch (err) {
+      console.error("Poller cycle failed while settling onboarding dialogs:", err);
+      break;
+    }
+    await onboarding.waitForAll();
+  }
+}
+
 async function main(): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const inviteCode = process.env.TEAM_INVITE_CODE;
@@ -333,14 +363,14 @@ async function main(): Promise<void> {
     await runEveningWrapUp(tg, team, date, weekStart, isSunday, parentChatId);
   }
 
-  // Ждём текущий цикл опроса, прежде чем проверять onboarding.waitForAll() —
-  // иначе, если этот запуск не тренирует ни одного уже зарегистрированного
-  // ребёнка (dueChildren пуст — обычное дело на резервных тиках cron), можно
-  // дойти досюда быстрее, чем поллер успеет получить самое первое сообщение
-  // нового ребёнка, и остановить поллер до того, как диалог знакомства вообще
-  // успеет начаться.
-  await poller.waitForCurrentCycle();
-  await onboarding.waitForAll();
+  // Даём поллеру несколько циклов опроса, прежде чем проверять
+  // onboarding.waitForAll() — иначе, если этот запуск не тренирует ни одного
+  // уже зарегистрированного ребёнка (dueChildren пуст — обычное дело на
+  // резервных тиках cron), можно дойти досюда быстрее, чем поллер успеет
+  // получить самое первое сообщение нового ребёнка, и остановить поллер до
+  // того, как диалог знакомства вообще успеет начаться. См. settlePollerCycles
+  // — почему одного цикла недостаточно и что это НЕ железная гарантия.
+  await settlePollerCycles(poller, onboarding, ONBOARDING_SETTLE_CYCLES);
 
   poller.stop();
   await pollerDone;
