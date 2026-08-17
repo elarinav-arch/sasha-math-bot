@@ -97,6 +97,15 @@ test("dispatchUpdates missing callback_query sender name falls back to a friendl
   expect(r.delivered[0].fromName).toBe("друг");
 });
 
+test("dispatchUpdates skips a callback_query with no message (e.g. inline-mode origin), offset still advances", () => {
+  const updates: Update[] = [
+    { update_id: 60, callback_query: { id: "cb60", data: "start_onboarding" } }, // нет поля message
+  ];
+  const r = dispatchUpdates(updates, 0);
+  expect(r.delivered).toEqual([]);
+  expect(r.offset).toBe(61);
+});
+
 test("pollOnce resolves a waiting child's promise when their message arrives", async () => {
   const tg = fakeTelegram(async () => [upd(1, 42, "6", 1000)]);
   const poller = new TelegramPoller(tg, 0); // startedAtMs=0 — сообщение с датой 1000с не покажется устаревшим
