@@ -318,3 +318,46 @@ test("pollOnce does not throw if answerCallbackQuery fails — same defensive pa
   const poller = new TelegramPoller(tg, 0);
   await expect(poller.pollOnce(() => {})).resolves.toBeUndefined();
 });
+
+// waitForCurrentCycle: используется main() перед проверкой onboarding.waitForAll(),
+// чтобы дождаться, пока ТЕКУЩИЙ (уже запущенный или ещё не начавшийся) цикл опроса
+// реально завершится — то есть пока getUpdates() не ответит и pollOnce не разберёт
+// пачку. Управляем разрешением getUpdates вручную (а не через setTimeout), чтобы
+// тест был детерминированным, а не полагался на время.
+test("waitForCurrentCycle does not resolve until the in-flight pollOnce's getUpdates resolves", async () => {
+  let releaseGetUpdates!: (updates: Update[]) => void;
+  const getUpdatesPromise = new Promise<Update[]>((resolve) => {
+    releaseGetUpdates = resolve;
+  });
+  let callCount = 0;
+  const tg = fakeTelegram(() => {
+    callCount++;
+    // Второй и последующие вызовы (следующий цикл run()) намеренно зависают
+    // навсегда — этому тесту важен только самый первый цикл.
+    return callCount === 1 ? getUpdatesPromise : new Promise<Update[]>(() => {});
+  });
+  const poller = new TelegramPoller(tg, 0);
+
+  void poller.run(() => {}); // запускаем цикл опроса в фоне, не ждём его целиком
+
+  let resolved = false;
+  const waitPromise = poller.waitForCurrentCycle().then(() => {
+    resolved = true;
+  });
+
+  // getUpdates ещё не ответил — цикл не может завершиться, сколько микротасков ни жди
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(resolved).toBe(false);
+
+  releaseGetUpdates([]);
+  await waitPromise;
+  expect(resolved).toBe(true);
+});
+
+test("waitForCurrentCycle resolves immediately if run() was never called (currentCycle defaults to Promise.resolve())", async () => {
+  const tg = fakeTelegram(async () => []);
+  const poller = new TelegramPoller(tg, 0);
+  await expect(poller.waitForCurrentCycle()).resolves.toBeUndefined();
+});

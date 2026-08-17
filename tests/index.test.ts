@@ -373,6 +373,81 @@ test("OnboardingTracker.start allows a new dialog for the same chatId after the 
   expect(runCount).toBe(2);
 });
 
+// REGRESSION (deeper than the OnboardingTracker fix in d5f6390): reproduces the
+// scenario from the whole-branch review end-to-end with the REAL TelegramPoller +
+// OnboardingTracker + handleUnmatchedSafely, wired together exactly like main() does.
+//
+// The bug this guards against is NOT "onboarding.pending is already populated by the
+// time waitForAll() is checked" (that part was fixed by OnboardingTracker itself) — it's
+// that main() can reach `await onboarding.waitForAll()` FASTER than the poller's very
+// first getUpdates() round-trip, when dueChildren is empty (the common case: a routine
+// cron tick where every already-registered child already trained this slot). At that
+// instant onboarding.pending is genuinely empty — not because there's nothing to wait
+// for, but because the poller hasn't even fetched its first batch yet. waitForAll()'s
+// `while (pending.size > 0)` can't wait for something that hasn't been registered.
+// main() falls through to poller.stop() before the in-flight pollOnce() has a chance to
+// dispatch — and once stopped=true is observed, run()'s loop exits after that ONE cycle
+// and never polls again, so nothing delivered in a LATER batch (e.g. the new child's
+// button press) can ever be fetched.
+//
+// getUpdates has a REAL setTimeout delay (mirroring actual network latency) — critical:
+// without it, dueChildren-empty's `await Promise.all([])` and getUpdates's resolution
+// would race only on microtask timing, which doesn't reliably reproduce the bug.
+test("REGRESSION: dueChildren empty + real getUpdates latency — a fresh child's message must not be lost when the poller shuts down", async () => {
+  const NEW_CHILD_CHAT_ID = 777;
+  let getUpdatesCallCount = 0;
+  const tg = fakeTelegram({
+    getUpdates: async () => {
+      getUpdatesCallCount++;
+      await new Promise((r) => setTimeout(r, 10)); // настоящая сетевая задержка
+      if (getUpdatesCallCount === 1) {
+        return [
+          {
+            update_id: 1,
+            message: {
+              message_id: 1,
+              date: Math.floor(Date.now() / 1000),
+              text: "/start",
+              chat: { id: NEW_CHILD_CHAT_ID },
+            },
+          },
+        ];
+      }
+      return [];
+    },
+  });
+  const poller = new TelegramPoller(tg, 0);
+  // waitFor замокан, чтобы диалог знакомства не завис на реальном 5-минутном
+  // таймауте ONBOARDING_STEP_MINUTES — тесту важно только, что он был ВЫЗВАН
+  // (сообщение дошло до регистрации ожидания), а не как долго он ждёт ответа.
+  const waitForSpy = vi.spyOn(poller, "waitFor").mockResolvedValue(null);
+  const team = emptyTeamState();
+  const onboarding = new OnboardingTracker();
+
+  const pollerDone = runPoller(poller, (msg) => {
+    onboarding.start(msg.chatId, () => handleUnmatchedSafely(team, "MURR2026", tg, poller, msg));
+  });
+
+  // dueChildren пуст в этом запуске — main() доходит сюда почти мгновенно
+  await Promise.all([]);
+
+  // === Исправленная последовательность остановки из main() ===
+  await poller.waitForCurrentCycle();
+  await onboarding.waitForAll();
+  poller.stop();
+  await pollerDone;
+  // ============================================================
+
+  // Сообщение действительно дошло до диалога знакомства (не потеряно при диспетчеризации).
+  expect(waitForSpy).toHaveBeenCalledWith(NEW_CHILD_CHAT_ID, expect.any(Number));
+  // И — главное для ЭТОГО бага — поллер не остановился после РОВНО одного цикла:
+  // run()'s while-петля успела перепроверить `stopped` и начать следующий цикл ДО
+  // того, как main() вообще вызвал poller.stop(). Именно это раньше не выполнялось:
+  // ревьюер эмпирически показал, что без фикса getUpdates вызывается РОВНО один раз
+  // за весь прогон, даже когда в первой же пачке уже пришло новое сообщение.
+  expect(getUpdatesCallCount).toBeGreaterThan(1);
+});
+
 test("OnboardingTracker.waitForAll also waits for dialogs that start while it's already draining", async () => {
   const tracker = new OnboardingTracker();
   let bFinished = false;

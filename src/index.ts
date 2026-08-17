@@ -333,7 +333,15 @@ async function main(): Promise<void> {
     await runEveningWrapUp(tg, team, date, weekStart, isSunday, parentChatId);
   }
 
+  // Ждём текущий цикл опроса, прежде чем проверять onboarding.waitForAll() —
+  // иначе, если этот запуск не тренирует ни одного уже зарегистрированного
+  // ребёнка (dueChildren пуст — обычное дело на резервных тиках cron), можно
+  // дойти досюда быстрее, чем поллер успеет получить самое первое сообщение
+  // нового ребёнка, и остановить поллер до того, как диалог знакомства вообще
+  // успеет начаться.
+  await poller.waitForCurrentCycle();
   await onboarding.waitForAll();
+
   poller.stop();
   await pollerDone;
   saveTeamState(PROGRESS_PATH, team);

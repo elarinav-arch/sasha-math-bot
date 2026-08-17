@@ -121,6 +121,7 @@ export class TelegramPoller {
   private offset = 0;
   private waiters = new Map<number, (text: string) => void>();
   private stopped = false;
+  private currentCycle: Promise<void> = Promise.resolve();
 
   constructor(
     private tg: Telegram,
@@ -156,7 +157,21 @@ export class TelegramPoller {
   }
 
   async run(onUnmatched: (msg: DeliveredMessage) => void): Promise<void> {
-    while (!this.stopped) await this.pollOnce(onUnmatched);
+    while (!this.stopped) {
+      this.currentCycle = this.pollOnce(onUnmatched);
+      await this.currentCycle;
+    }
+  }
+
+  // Дожидается завершения ТЕКУЩЕГО (или ещё не начавшегося, но уже запланированного)
+  // цикла опроса. Нужно перед остановкой поллера: onboarding.pending синхронно
+  // пополняется ВНУТРИ pollOnce (см. onUnmatched), поэтому проверка "pending
+  // пуст ли" сама по себе не различает "точно нечего ждать" и "ещё не успели
+  // получить самое первое сообщение этого запуска". Дав текущему циклу
+  // завершиться, мы гарантируем: если что-то пришло — оно уже зарегистрировано
+  // в onboarding.pending к моменту вызова waitForAll().
+  waitForCurrentCycle(): Promise<void> {
+    return this.currentCycle;
   }
 
   stop(): void {
