@@ -157,7 +157,9 @@ git commit -m "feat: dispatchUpdates routes callback_query button clicks as mess
 
 Это тонкие обёртки над HTTP-вызовом `this.call(...)` — как и существующие `sendMessage`/`sendPhoto`/`getUpdates`, они не покрыты юнит-тестами напрямую (во всех тестах `Telegram` подменяется фейковым объектом через `as unknown as Telegram`). Следуем этому же соглашению.
 
-- [ ] **Step 1: Add the two methods to the `Telegram` class**
+⚠️ **Обнаружено при ревью Task 1, добавлено сюда:** `Telegram.getUpdates` сейчас явно ограничивает `allowed_updates: ["message"]` — Telegram API интерпретирует это как "присылай мне ТОЛЬКО message", и без изменения этого списка `callback_query` от Telegram вообще никогда не придёт, сколько бы код ни был готов его обработать. Без этого шага вся фича молча не работала бы в проде (юнит-тесты этого не поймают — они всегда подставляют updates напрямую в фейковый `getUpdates`, минуя реальный список `allowed_updates`).
+
+- [ ] **Step 1: Add the two methods to the `Telegram` class, and allow `callback_query` updates**
 
 В `src/telegram.ts`, внутри класса `Telegram`, добавь после `sendPhoto`:
 
@@ -180,10 +182,23 @@ git commit -m "feat: dispatchUpdates routes callback_query button clicks as mess
   }
 ```
 
+И поменяй существующий метод `getUpdates` этого же класса — замени:
+```ts
+  getUpdates(offset: number, timeoutSec: number): Promise<Update[]> {
+    return this.call("getUpdates", { offset, timeout: timeoutSec, allowed_updates: ["message"] });
+  }
+```
+на:
+```ts
+  getUpdates(offset: number, timeoutSec: number): Promise<Update[]> {
+    return this.call("getUpdates", { offset, timeout: timeoutSec, allowed_updates: ["message", "callback_query"] });
+  }
+```
+
 - [ ] **Step 2: Verify the project still typechecks and all tests still pass**
 
 Run: `npx tsc --noEmit && npx vitest run tests/telegram.test.ts`
-Expected: `tsc` no output, vitest 24 passed (unchanged from Task 1 — this task only adds new methods, doesn't touch anything existing)
+Expected: `tsc` no output, vitest 24 passed (unchanged from Task 1 — this task only adds new methods and widens `allowed_updates`, doesn't touch anything existing that's under test)
 
 - [ ] **Step 3: Commit**
 
