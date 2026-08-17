@@ -19,7 +19,7 @@ export interface DayRecord {
 // Прогресс ОДНОГО ребёнка (было — весь progress.json; теперь один из многих в TeamState).
 export interface ChildProgress {
   chatId: number;
-  name: string; // Telegram first_name на момент /join
+  name: string; // имя, которое ребёнок ввёл сам при регистрации (см. runOnboarding)
   joinedAt: string; // ISO-дата регистрации
   facts: Record<string, FactProgress>;
   days: DayRecord[];

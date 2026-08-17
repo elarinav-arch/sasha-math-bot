@@ -127,7 +127,7 @@ export async function runChildSlot(
 }
 
 // Оборачивает общий поллер: если он падает (сеть/API), не роняем весь процесс —
-// просто прекращаем обработку /join и входящих ответов до конца этого запуска;
+// просто прекращаем обработку регистрации и входящих ответов до конца этого запуска;
 // уже идущие детские сессии сами уйдут по своему таймауту, а не зависнут.
 export function runPoller(poller: TelegramPoller, onUnmatched: (msg: DeliveredMessage) => void): Promise<void> {
   return poller.run(onUnmatched).catch((err) => {
