@@ -1,6 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { dispatchUpdates, PolledIO, TelegramPoller, type Update } from "../src/telegram.js";
-import type { Telegram } from "../src/telegram.js";
+import { dispatchUpdates, PolledIO, Telegram, TelegramPoller, type Update } from "../src/telegram.js";
 
 function upd(id: number, chatId: number, text: string, dateSec: number, firstName?: string): Update {
   return {
@@ -264,4 +263,21 @@ test("PolledIO.extendDeadline extends the window honored by a subsequent waitFor
 
   expect(await replyPromise).toBe("7");
   vi.useRealTimers();
+});
+
+test("Telegram.getUpdates requests both message and callback_query updates from Telegram's API", async () => {
+  const fetchSpy = vi.fn(async () => ({
+    json: async () => ({ ok: true, result: [] }),
+  })) as unknown as typeof fetch;
+  vi.stubGlobal("fetch", fetchSpy);
+
+  const tg = new Telegram("FAKE_TOKEN");
+  await tg.getUpdates(0, 20);
+
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  const [, init] = (fetchSpy as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0];
+  const body = JSON.parse(init.body as string);
+  expect(body.allowed_updates).toEqual(["message", "callback_query"]);
+
+  vi.unstubAllGlobals();
 });
