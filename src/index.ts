@@ -201,6 +201,30 @@ export async function runOnboarding(
   );
 }
 
+// Отслеживает диалоги регистрации, которые идут прямо сейчас (по chatId), чтобы:
+// 1) не запускать два диалога для одного chatId параллельно — если ребёнок
+//    пришлёт два сообщения подряд до первого шага своего диалога, второе
+//    просто игнорируется, а не порождает дублирующееся приветствие;
+// 2) main() мог дождаться завершения ВСЕХ идущих диалогов регистрации перед
+//    остановкой поллера — иначе, если в этот слот больше никто не тренируется,
+//    poller.stop() сработает почти сразу после старта джобы и оборвёт диалог,
+//    даже не успев получить от ребёнка ответ на первое же сообщение.
+export class OnboardingTracker {
+  private pending = new Map<number, Promise<void>>();
+
+  start(chatId: number, run: () => Promise<void>): void {
+    if (this.pending.has(chatId)) return;
+    const p = run().finally(() => this.pending.delete(chatId));
+    this.pending.set(chatId, p);
+  }
+
+  async waitForAll(): Promise<void> {
+    while (this.pending.size > 0) {
+      await Promise.all(this.pending.values());
+    }
+  }
+}
+
 async function handleUnmatched(
   team: TeamState,
   inviteCode: string,
@@ -288,8 +312,9 @@ async function main(): Promise<void> {
 
   const tg = new Telegram(token);
   const poller = new TelegramPoller(tg);
+  const onboarding = new OnboardingTracker();
   const pollerDone = runPoller(poller, (msg) => {
-    void handleUnmatchedSafely(team, inviteCode, tg, poller, msg);
+    onboarding.start(msg.chatId, () => handleUnmatchedSafely(team, inviteCode, tg, poller, msg));
   });
 
   const dueChildren = Object.values(team.children).filter((child) => {
@@ -308,6 +333,7 @@ async function main(): Promise<void> {
     await runEveningWrapUp(tg, team, date, weekStart, isSunday, parentChatId);
   }
 
+  await onboarding.waitForAll();
   poller.stop();
   await pollerDone;
   saveTeamState(PROGRESS_PATH, team);

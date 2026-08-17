@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import {
-  activeSlot, handleUnmatchedSafely, runChildSlot, runChildSlotSafely, runEveningWrapUp, runOnboarding, runPoller,
+  activeSlot, handleUnmatchedSafely, OnboardingTracker, runChildSlot, runChildSlotSafely, runEveningWrapUp,
+  runOnboarding, runPoller,
 } from "../src/index.js";
 import { TelegramPoller, type DeliveredMessage, type Telegram } from "../src/telegram.js";
 import { emptyChildProgress, emptyTeamState, getDay } from "../src/state.js";
@@ -334,4 +335,57 @@ test("runOnboarding trims surrounding whitespace from the code before comparing"
   await runOnboarding(poller, tg, team, "MURR2026", 600);
 
   expect(team.children[600]?.name).toBe("Саша");
+});
+
+test("OnboardingTracker.start runs the given async function", async () => {
+  const tracker = new OnboardingTracker();
+  let ran = false;
+  tracker.start(1, async () => {
+    ran = true;
+  });
+  await tracker.waitForAll();
+  expect(ran).toBe(true);
+});
+
+test("OnboardingTracker.start ignores a second call for the same chatId while the first is still pending", async () => {
+  const tracker = new OnboardingTracker();
+  let runCount = 0;
+  const run = async () => {
+    runCount++;
+    await new Promise((r) => setTimeout(r, 20));
+  };
+  tracker.start(1, run);
+  tracker.start(1, run); // тот же chatId, диалог уже идёт — игнорируется
+  await tracker.waitForAll();
+  expect(runCount).toBe(1);
+});
+
+test("OnboardingTracker.start allows a new dialog for the same chatId after the previous one finished", async () => {
+  const tracker = new OnboardingTracker();
+  let runCount = 0;
+  const run = async () => {
+    runCount++;
+  };
+  tracker.start(1, run);
+  await tracker.waitForAll();
+  tracker.start(1, run); // предыдущий диалог для chatId 1 уже завершился — новый разрешён
+  await tracker.waitForAll();
+  expect(runCount).toBe(2);
+});
+
+test("OnboardingTracker.waitForAll also waits for dialogs that start while it's already draining", async () => {
+  const tracker = new OnboardingTracker();
+  let bFinished = false;
+  tracker.start(1, async () => {
+    await new Promise((r) => setTimeout(r, 5));
+    // диалог 1 уже какое-то время идёт (waitForAll уже ждёт его), и только теперь
+    // "приходит" ещё один незарегистрированный ребёнок (chatId 2) — новый диалог
+    // должен попасть в ожидание, а не быть пропущенным уже сделанным снепшотом
+    tracker.start(2, async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      bFinished = true;
+    });
+  });
+  await tracker.waitForAll();
+  expect(bFinished).toBe(true);
 });
