@@ -69,7 +69,8 @@
           "sessions": 0,
           "stars": 0,
           "attemptedSlots": [
-            "morning"
+            "morning",
+            "midday"
           ]
         }
       ],
@@ -1341,7 +1342,8 @@
           "sessions": 0,
           "stars": 0,
           "attemptedSlots": [
-            "morning"
+            "morning",
+            "midday"
           ]
         }
       ],
