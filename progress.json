@@ -90,7 +90,8 @@
           "stars": 0,
           "attemptedSlots": [
             "morning",
-            "midday"
+            "midday",
+            "evening"
           ]
         }
       ],
@@ -1383,7 +1384,8 @@
           "stars": 0,
           "attemptedSlots": [
             "morning",
-            "midday"
+            "midday",
+            "evening"
           ]
         }
       ],
@@ -1412,5 +1414,5 @@
     "trophyAwarded": false
   },
   "trophyCards": [],
-  "lastEveningWrapUp": "2026-08-23"
+  "lastEveningWrapUp": "2026-08-24"
 }
