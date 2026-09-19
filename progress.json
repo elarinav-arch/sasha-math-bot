@@ -297,6 +297,14 @@
             "midday",
             "evening"
           ]
+        },
+        {
+          "date": "2026-09-19",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "midday"
+          ]
         }
       ],
       "streak": 0,
@@ -1794,6 +1802,14 @@
           "attemptedSlots": [
             "midday",
             "evening"
+          ]
+        },
+        {
+          "date": "2026-09-19",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "midday"
           ]
         }
       ],
