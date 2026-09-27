@@ -364,6 +364,14 @@
             "midday",
             "evening"
           ]
+        },
+        {
+          "date": "2026-09-27",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "midday"
+          ]
         }
       ],
       "streak": 0,
@@ -1931,6 +1939,14 @@
           ],
           "cardsWon": [
             "cat12"
+          ]
+        },
+        {
+          "date": "2026-09-27",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "midday"
           ]
         }
       ],
