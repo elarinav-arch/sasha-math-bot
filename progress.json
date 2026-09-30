@@ -388,6 +388,14 @@
           "attemptedSlots": [
             "evening"
           ]
+        },
+        {
+          "date": "2026-09-30",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "evening"
+          ]
         }
       ],
       "streak": 0,
@@ -1984,9 +1992,17 @@
           "cardsWon": [
             "cat52"
           ]
+        },
+        {
+          "date": "2026-09-30",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "evening"
+          ]
         }
       ],
-      "streak": 1,
+      "streak": 0,
       "cards": [
         "c05",
         "c23",
@@ -2013,5 +2029,5 @@
     "trophyAwarded": false
   },
   "trophyCards": [],
-  "lastEveningWrapUp": "2026-09-29"
+  "lastEveningWrapUp": "2026-09-30"
 }
