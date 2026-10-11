@@ -470,6 +470,14 @@
           "attemptedSlots": [
             "evening"
           ]
+        },
+        {
+          "date": "2026-10-11",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "evening"
+          ]
         }
       ],
       "streak": 0,
@@ -2148,6 +2156,14 @@
           "attemptedSlots": [
             "evening"
           ]
+        },
+        {
+          "date": "2026-10-11",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "evening"
+          ]
         }
       ],
       "streak": 0,
@@ -2177,5 +2193,5 @@
     "trophyAwarded": false
   },
   "trophyCards": [],
-  "lastEveningWrapUp": "2026-10-10"
+  "lastEveningWrapUp": "2026-10-11"
 }
