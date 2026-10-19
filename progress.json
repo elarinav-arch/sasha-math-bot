@@ -529,6 +529,14 @@
             "midday",
             "evening"
           ]
+        },
+        {
+          "date": "2026-10-19",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "evening"
+          ]
         }
       ],
       "streak": 0,
@@ -2266,6 +2274,14 @@
             "midday",
             "evening"
           ]
+        },
+        {
+          "date": "2026-10-19",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "evening"
+          ]
         }
       ],
       "streak": 0,
@@ -2291,9 +2307,9 @@
     }
   },
   "weeklyGoal": {
-    "weekStart": "2026-10-12",
+    "weekStart": "2026-10-19",
     "trophyAwarded": false
   },
   "trophyCards": [],
-  "lastEveningWrapUp": "2026-10-18"
+  "lastEveningWrapUp": "2026-10-19"
 }
