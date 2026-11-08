@@ -684,6 +684,14 @@
           "attemptedSlots": [
             "midday"
           ]
+        },
+        {
+          "date": "2026-11-08",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "midday"
+          ]
         }
       ],
       "streak": 0,
@@ -2571,6 +2579,14 @@
         },
         {
           "date": "2026-11-07",
+          "sessions": 0,
+          "stars": 0,
+          "attemptedSlots": [
+            "midday"
+          ]
+        },
+        {
+          "date": "2026-11-08",
           "sessions": 0,
           "stars": 0,
           "attemptedSlots": [
